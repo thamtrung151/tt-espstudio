@@ -1,0 +1,11 @@
+node_modules/
+.backups/
+.tt-espstudio-staging/
+.npm-cache/
+dist/
+.builds/
+.pio/
+test-results/
+playwright-report/
+*.log
+.env*
