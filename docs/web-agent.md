@@ -32,7 +32,7 @@ Không có Agent: vẫn sửa/lưu/nhập/xuất Blockly, C++ và config; không
 
 ## GitHub Pages dành cho chủ dự án
 
-Repo dự kiến: `thamtrung151/tt-espstudio`. URL dự kiến: `https://thamtrung151.github.io/tt-espstudio/`.
+Repo: https://github.com/thamtrung151/tt-espstudio. Website preview: https://thamtrung151.github.io/tt-espstudio/ (đã xuất bản ngày 27/10/2026).
 
 1. Repo → **Settings → Pages**.
 2. **Build and deployment → Source → GitHub Actions**.
@@ -51,7 +51,7 @@ Web version và Agent version tách biệt; hợp đồng hiện là API v1. Tha
 
 ## Kiểm chứng còn phải làm trước phát hành rộng
 
-- Kết nối từ HTTPS thật trên Chrome và Edge, bao gồm quyền Local/Loopback Network Access khi hỏi/cho phép/từ chối. Không hướng dẫn tắt bảo mật browser.
+- Kết nối từ HTTPS thật đã đạt bằng Edge headless với quyền được cấp qua Playwright. Còn kiểm tra prompt quyền Local/Loopback Network Access bằng UI khi hỏi/cho phép/từ chối trên Chrome/Edge thường. Không hướng dẫn tắt bảo mật browser.
 - Nạp thật từ website qua Agent trên board người dùng, đối chiếu COM và firmware; thử bận cổng/rút USB.
 - Bộ cài tự chứa runtime, tải toolchain ghim phiên bản, sửa/cài lại, thử Windows sạch không Node/Python/PlatformIO/VS Code.
 - UI ghép nối/thoát bằng cửa sổ/tray thay terminal, khởi động cùng Windows tùy chọn.

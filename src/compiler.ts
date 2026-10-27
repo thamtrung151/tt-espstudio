@@ -16,7 +16,12 @@ export class HttpCompilerService implements CompilerService {
   }
   async request<T = any>(path: string, body?: unknown): Promise<T> {
     const base = this.isAgent ? 'http://127.0.0.1:3217/api/' : '/api/';
-    const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', 'X-Studio-Token': this.token }, body: body === undefined ? undefined : JSON.stringify(body) });
+    let response: Response;
+    try {
+      response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', 'X-Studio-Token': this.token }, body: body === undefined ? undefined : JSON.stringify(body) });
+    } catch {
+      throw new Error(this.isAgent ? 'Không kết nối được Agent. Hãy mở Agent, kiểm tra đúng website được phép và quyền truy cập mạng cục bộ/loopback trong cài đặt website của Chrome/Edge.' : 'Không kết nối được compiler local. Hãy kiểm tra launcher.');
+    }
     const data = await response.json();
     if (!response.ok) {
       if (response.status === 401) this.saveToken('');

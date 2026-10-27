@@ -4,6 +4,13 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+test.beforeEach(async ({ page, context, baseURL }) => {
+  if (!process.env.ESPSTUDIO_TEST_WEB_URL) return;
+  // Headless cannot click the browser's native permission prompt. Grant only this
+  // test origin's loopback permission; never disable browser security globally.
+  await context.grantPermissions(['local-network-access'], { origin: new URL(baseURL!).origin });
+});
+
 test('static web editor works offline, pairs with real agent and handles expiry', async ({ page, baseURL }) => {
   await page.goto('./');
   await expect(page.locator('#code')).toHaveValue(/digitalWrite/);

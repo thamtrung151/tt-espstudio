@@ -29,7 +29,7 @@ document.querySelector('#app')!.innerHTML = `
       <button class="nav" data-view="guide"><span>◈</span> Hướng dẫn <kbd>04</kbd></button>
     </nav>
     <div class="sidebar-note"><span class="eyebrow">TỪ Ý TƯỞNG ĐẾN CHUYỂN ĐỘNG</span><p>Board của bạn.<br>Chương trình của bạn.</p><div class="mini-circuit">○ ━━━ ▣ ━━━ ○<br>└ ──────── ┘</div></div>
-    <div class="sidebar-bottom"><span class="dot"></span> Local workspace <span>v0.2.1</span></div>
+    <div class="sidebar-bottom"><span class="dot"></span> Workspace <span>v0.3 preview</span></div>
   </aside>
   <div class="shell">
     <header><div class="breadcrumb">Workspace <span>/</span> <input id="project-name" aria-label="Tên project" maxlength="80"></div><div class="header-actions"><span id="save-state">Lưu trên máy</span><button id="import-project" class="quiet">↥ Nhập project</button><button id="export-project" class="quiet">↧ Lưu project</button></div></header>
@@ -54,7 +54,7 @@ document.querySelector('#app')!.innerHTML = `
       </section>
       <section id="guide-view" class="view" hidden><div class="guide-grid"><div class="card"><div class="eyebrow">BÀI ĐẦU TIÊN</div><h2>Một đèn LED. Cả một luồng làm việc.</h2><ol class="steps"><li><strong>Khai báo phần cứng</strong><p>Ví dụ: GPIO23 → điện trở 330Ω → anode LED; cathode → GND. Đổi chân trong Configuration nếu sơ đồ board khác.</p></li><li><strong>Đọc chương trình</strong><p>Trong “Lặp mãi”, bật LED, chờ 500 ms, tắt LED, chờ 500 ms. Bấm block để chọn dòng C++ tương ứng.</p></li><li><strong>Biên dịch và nạp</strong><p>Bấm Biên dịch, mở Thiết bị, quét cổng và chọn đúng ESP32 DevKit. Nạp firmware rồi quan sát LED.</p></li><li><strong>Đi sâu hơn</strong><p>Chuyển sang C++ tự do. Bản block được khóa; code không bị tự ghi đè. Khi quay lại, bản C++ được lưu vào lịch sử và file project.</p></li></ol></div><div class="card guide-side"><span class="guide-icon">◈</span><h2>Nền móng trước.<br>Mở rộng tiếp.</h2><p>Đang có: GPIO input/output, ADC, PWM, servo và motor IN1/IN2 (hai PWM), Blockly + C++, cấu hình, build/upload và Serial.</p><p>Motor/servo chỉ cần khai báo khi thêm thiết bị. Motor chạy có thời hạn rồi dừng; servo không phát xung cho đến khi có block điều khiển. Tiếp theo: encoder, bus cảm biến, lưu online và AI.</p><div class="info">Chủ dự án đã báo thử thành công cả ESP32 và ESP32-S3. Chưa có bảng xác nhận riêng từng driver/ngoại vi.</div></div></div></section>
       <section class="console"><div class="console-heading"><strong><span class="dot"></span> Build console</strong><span id="job-status">Sẵn sàng</span><button id="clear-log" class="quiet">Xóa log</button></div><pre id="build-log" aria-label="Nhật ký biên dịch">TT ESPStudio · Chọn Biên dịch để kiểm tra firmware bằng toolchain thật.</pre></section>
-    </main><footer><span>TT ESPStudio / Local development preview</span><span>Cấu hình mở · Blockly + C++ · ESP32</span></footer>
+    </main><footer><span>TT ESPStudio / ${compiler.isAgent ? 'Web + Agent preview' : 'Local development preview'}</span><span>Cấu hình mở · Blockly + C++ · ESP32</span></footer>
   </div>
   <input type="file" id="file-input" accept="application/json,.json" hidden>
   <dialog id="history-dialog"><div class="card-heading"><h2>Lịch sử C++</h2><button id="close-history" aria-label="Đóng lịch sử">✕</button></div><p>Bản C++ và cấu hình đi kèm được giữ trong project. Tải xuống để tiếp tục sử dụng.</p><div id="history-items"></div><button id="clear-history">Xóa lịch sử sau khi đã xuất project</button></dialog>

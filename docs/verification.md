@@ -2,6 +2,11 @@
 
 ## Web + Agent preview
 
+- Repo công khai và Pages đã xuất bản sau xác nhận của chủ dự án: https://github.com/thamtrung151/tt-espstudio và https://thamtrung151.github.io/tt-espstudio/.
+- Kiểm tra **HTTPS Pages thật → Agent loopback → PlatformIO** bằng Edge 156.0.4314.42: 2/2 bài đạt, bao gồm S3 GPIO38 compile thật và C++ lỗi cố ý. Không flash USB.
+- Chrome headless trên HTTPS Pages: bài editor offline, ghép nối, reload và thu hồi phiên cũng đạt (quyền loopback được cấp riêng trong context kiểm thử).
+- Headless không bấm được prompt quyền mạng: lượt đầu bị browser từ chối loopback. Bài test dùng `context.grantPermissions(['local-network-access'], {origin})` cho đúng website và context; không tắt bảo mật toàn trình duyệt. Thao tác cấp/từ chối quyền bằng UI trên browser thường vẫn cần thử thủ công.
+
 - Baseline Git 2c67d82 giữ bản 0.2.1 đang chạy; nhánh nâng cấp feature/web-local-agent.
 - 29/29 test lõi/API đạt, gồm HTTP server thật kiểm tra Host/Origin, pairing, token, thời hạn, số lần đoán, từ chối request không được phép. Fetch không cho giả Host trong test đầu; ca Host được chuyển sang node:http để kiểm tra header thực.
 - 9/9 test UI cũ đạt; hai test firmware của bridge cũ bỏ qua trong lượt hồi quy.
