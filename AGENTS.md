@@ -1,5 +1,9 @@
 # Hướng dẫn làm việc với TT ESPStudio
 
+- Định hướng mới: web tĩnh GitHub Pages + Windows Local Agent, không cloud compiler/WASM/Electron. Đọc docs/web-agent.md và docs/agent-api.md. Giữ backend Node hiện có; không bắt buộc đổi sang Python.
+- Source chính nằm ở gốc; staging cũ giữ làm tham khảo 0.2.1. Không nhân đôi nhánh phát triển mới sang staging. Chỉ stage source sản phẩm được chọn, không `git add .` vì thư mục có tài liệu cá nhân/output/nguồn thư viện chưa tích hợp.
+- API Agent v1 dùng pairing theo origin và token phiên. Không hạ Origin/Host/CORS để trang online kết nối. `ESPSTUDIO_AGENT_DEV=1` chỉ dành thử nghiệm với PlatformIO đã cài; không coi đó là installer hoàn thiện.
+
 - Nguồn làm việc chính là `C:\Users\VICTUS\TT ESPStudio`; `.tt-espstudio-staging` đã được người dùng chuyển về bên trong cây dự án. Không tạo staging trong project micromouse. Khi cần staging do sandbox, dùng thư mục tạm của hệ điều hành rồi bàn giao vào đúng dự án.
 - Chỉ đạo mới nhất của chủ dự án: **freely use GPIO, không khóa chân theo whitelist board/chip**. Target pin tables chỉ để đưa thông tin tham khảo. Không phục hồi các hard-error GPIO của 0.1/0.2. Được kiểm tra định dạng/số nguyên và tài nguyên generator; pin input-only, ADC, Serial, USB, flash hoặc dùng chung đều không phải cổng chặn áp dụng/build/nạp.
 - Người dùng đã báo ESP32 và ESP32-S3 đều hoạt động. Không suy diễn rằng đã kiểm chứng từng ngoại vi hoặc tất cả board ESP32.

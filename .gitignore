@@ -9,3 +9,9 @@ test-results/
 playwright-report/
 *.log
 .env*
+
+dist-web/
+release/
+output/
+*.local
+

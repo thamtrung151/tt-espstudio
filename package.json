@@ -1,17 +1,31 @@
 {
-  "name": "tt-espstudio",
-  "version": "0.2.1",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "start": "tsx server/index.ts",
-    "test": "vitest run tests/core.test.ts tests/service.test.ts tests/robotics.test.ts",
-    "test:browser": "playwright test",
-    "firmware:example": "tsx scripts/export-example.ts",
-    "firmware:robotics": "tsx scripts/export-robotics.ts"
-  },
-  "dependencies": {"blockly": "^12.3.1", "fflate": "^0.8.2", "zod": "^3.25.76"},
-  "devDependencies": {"@playwright/test": "^1.56.1", "@types/node": "^24.0.0", "tsx": "^4.20.0", "typescript": "^5.9.3", "vite": "^7.1.12", "vitest": "^3.2.4"}
+    "name":  "tt-espstudio",
+    "version":  "0.2.1",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "vite --host 127.0.0.1",
+                    "build":  "tsc --noEmit \u0026\u0026 vite build",
+                    "start":  "tsx server/index.ts",
+                    "test":  "vitest run tests/core.test.ts tests/service.test.ts tests/robotics.test.ts tests/agent.test.ts",
+                    "test:browser":  "playwright test",
+                    "firmware:example":  "tsx scripts/export-example.ts",
+                    "firmware:robotics":  "tsx scripts/export-robotics.ts",
+                    "agent:dev":  "tsx server/start-agent.ts",
+                    "build:web":  "tsc --noEmit \u0026\u0026 node scripts/build-web.mjs",
+                    "test:agent-browser":  "playwright test --config playwright.agent.config.ts"
+                },
+    "dependencies":  {
+                         "blockly":  "^12.3.1",
+                         "fflate":  "^0.8.2",
+                         "zod":  "^3.25.76"
+                     },
+    "devDependencies":  {
+                            "@playwright/test":  "^1.56.1",
+                            "@types/node":  "^24.0.0",
+                            "tsx":  "^4.20.0",
+                            "typescript":  "^5.9.3",
+                            "vite":  "^7.1.12",
+                            "vitest":  "^3.2.4"
+                        }
 }

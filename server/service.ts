@@ -12,20 +12,22 @@ export function findPio() {
   const bundled = path.join(homedir(), '.platformio', 'penv', process.platform === 'win32' ? 'Scripts/pio.exe' : 'bin/pio');
   return existsSync(bundled) ? bundled : 'pio';
 }
-export type Job = { id: string; kind: 'build' | 'upload'; status: 'running' | 'success' | 'error'; log: string; directory: string; target: string; exitCode: number | null };
+export type Job = { id: string; kind: 'build' | 'upload'; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; directory: string; target: string; exitCode: number | null };
 export const buildRequest = z.object({ config: z.unknown(), code: z.string().min(1).max(200000) }).strict();
-export function runProcess(args: string[], cwd: string, onData: (chunk: string) => void, timeoutMs = 300000): Promise<number> {
+export function runProcess(args: string[], cwd: string, onData: (chunk: string) => void, timeoutMs = 300000, signal?: AbortSignal): Promise<number> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return resolve(-1);
     const child = spawn(findPio(), args, { cwd, shell: false, windowsHide: true, env: { ...process.env, PLATFORMIO_SETTING_ENABLE_TELEMETRY: 'No', PYTHONIOENCODING: 'utf-8' } });
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true; onData('\nQuá thời gian cho phép; đang dừng toolchain.\n');
+    const stop = () => {
       if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
       else child.kill('SIGKILL');
-    }, timeoutMs);
+    };
+    signal?.addEventListener('abort', stop, { once: true });
+    const timer = setTimeout(() => { timedOut = true; onData('\nQuá thời gian cho phép; đang dừng toolchain.\n'); stop(); }, timeoutMs);
     child.stdout.on('data', chunk => onData(chunk.toString())); child.stderr.on('data', chunk => onData(chunk.toString()));
-    child.on('error', error => { clearTimeout(timer); reject(error); });
-    child.on('close', code => { clearTimeout(timer); resolve(timedOut ? -1 : code ?? -1); });
+    child.on('error', error => { clearTimeout(timer); signal?.removeEventListener('abort', stop); reject(error); });
+    child.on('close', code => { clearTimeout(timer); signal?.removeEventListener('abort', stop); resolve(timedOut || signal?.aborted ? -1 : code ?? -1); });
   });
 }
 export async function listPorts(cwd: string) {
@@ -35,10 +37,12 @@ export async function listPorts(cwd: string) {
 }
 export class BuildService {
   jobs = new Map<string, Job>(); busy = false;
+  private controllers = new Map<string, AbortController>();
   constructor(readonly root: string) {}
   async build(input: unknown) {
     const data = buildRequest.parse(input); const config = parseConfig(data.config);
     if (this.busy) throw new Error('Một tác vụ đang chạy. Hãy chờ hoàn tất.');
+    if (this.jobs.size >= 100) throw new Error('Đã đạt giới hạn tác vụ trong phiên. Khởi động lại Agent.');
     this.busy = true;
     try {
       const id = randomUUID(); const directory = path.join(this.root, id);
@@ -63,8 +67,19 @@ export class BuildService {
     } catch (error) { this.busy = false; throw error; }
   }
   private async execute(job: Job, args: string[]) {
-    try { job.exitCode = await runProcess(args, job.directory, chunk => { job.log = (job.log + chunk).slice(-160000); }); job.status = job.exitCode === 0 ? 'success' : 'error'; }
+    const controller = new AbortController(); this.controllers.set(job.id, controller);
+    try {
+      job.exitCode = await runProcess(args, job.directory, chunk => { job.log = (job.log + chunk).slice(-160000); }, 300000, controller.signal);
+      const artifactExists = job.kind !== 'build' || existsSync(path.join(job.directory, '.pio', 'build', 'robot', 'firmware.bin'));
+      job.status = controller.signal.aborted ? 'cancelled' : job.exitCode === 0 && artifactExists ? 'success' : 'error';
+      if (job.exitCode === 0 && !artifactExists) job.log += '\nKhông tìm thấy firmware.bin sau build.';
+    }
     catch (error) { job.status = 'error'; job.log += `\n${String(error)}\nKiểm tra PlatformIO Core hoặc biến ESPSTUDIO_PIO.`; }
-    finally { this.busy = false; }
+    finally { this.controllers.delete(job.id); this.busy = false; }
+  }
+  cancel(id: string) {
+    const job = this.jobs.get(id);
+    if (!job || job.kind !== 'build' || job.status !== 'running') throw new Error('Chỉ hủy tác vụ biên dịch đang chạy; không ngắt nạp firmware.');
+    this.controllers.get(id)?.abort(); job.log += '\nĐã yêu cầu hủy biên dịch.\n';
   }
 }

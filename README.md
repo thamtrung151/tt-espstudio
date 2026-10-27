@@ -1,6 +1,10 @@
-# TT ESPStudio 0.2.1
+# TT ESPStudio — Web + Local Agent preview
 
-**Bản chính:** `C:\Users\VICTUS\TT ESPStudio`. Thư mục `.tt-espstudio-staging` là bản sao phát triển đã được đồng bộ; từ đây hãy mở/chỉnh source và chạy launcher ở thư mục chính.
+Định hướng hiện tại: website online + Agent Windows biên dịch/nạp trên máy người dùng. Xem [hướng dẫn Pages và Agent](docs/web-agent.md) và [API v1](docs/agent-api.md).
+
+`npm run build:web` tạo web online ở `dist-web`; `Start-ESPStudio-Agent-Dev.cmd` chạy Agent preview bằng PlatformIO của máy phát triển. Bộ cài `.exe` tự thiết lập toolchain chưa phát hành. `Start-ESPStudio.cmd` vẫn giữ luồng localhost để kiểm tra hồi quy.
+
+**Bản chính:** `C:\Users\VICTUS\TT ESPStudio`. Thư mục `.tt-espstudio-staging` giữ bản 0.2.1 để tham khảo; source mới và launcher nằm ở thư mục chính.
 
 **GPIO do người dùng quyết định:** không có whitelist hoặc khóa GPIO theo board mẫu. Nhập chân theo sơ đồ board của bạn; boot/flash/PSRAM/USB/UART/input-only/ADC và dùng chung chân chỉ hiện thông tin tham khảo, không chặn áp dụng/build/nạp. Danh sách GPIO có thể trống hoặc tự bổ sung; thiết bị vẫn dùng đúng chân đã nhập. Đổi chip không tự thay danh sách chân của bạn.
 
@@ -78,3 +82,4 @@ Bridge chỉ chạy loopback cho máy cá nhân tin cậy. Không triển khai c
 ESP32 và ESP32-S3 đã có phản hồi hoạt động từ chủ dự án. Thông tin pinout WROOM/DevKitC chỉ để gợi ý, không áp làm giới hạn cho board khác. Dùng chung GPIO được thông báo để người dùng quyết định; chưa có driver bus I2C/SPI. Chưa có encoder, điều khiển motor đồng thời, AI/MCP, online storage, mobile USB hoặc cloud build.
 
 Tên/giấy phép/phát hành chưa chốt. [Kiến trúc](docs/architecture.md) · [Kiểm chứng](docs/verification.md) · [Lộ trình](docs/roadmap.md).
+

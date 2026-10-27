@@ -1,5 +1,6 @@
 import './style.css';
 import './robotics.css';
+import { compiler } from './compiler';
 import { zipSync, strToU8 } from 'fflate';
 import { Blockly, initialWorkspace, toolbox, readProgram, setDevices, validateWorkspace, deviceBlocks } from './blocks';
 import { describeError, parseConfig, platformioIni, targets, template, type Config, type Driver, driverLabels, configWarnings, allocatePwm } from './core/config';
@@ -59,6 +60,34 @@ document.querySelector('#app')!.innerHTML = `
   <dialog id="history-dialog"><div class="card-heading"><h2>Lịch sử C++</h2><button id="close-history" aria-label="Đóng lịch sử">✕</button></div><p>Bản C++ và cấu hình đi kèm được giữ trong project. Tải xuống để tiếp tục sử dụng.</p><div id="history-items"></div><button id="clear-history">Xóa lịch sử sau khi đã xuất project</button></dialog>
 `;
 const codeArea = $<HTMLTextAreaElement>('code');
+const connectButton = document.createElement('button'); connectButton.id = 'agent-connect'; connectButton.textContent = 'Kết nối compiler'; connectButton.className = 'quiet';
+$('bridge-state').after(connectButton);
+const agentPanel = document.createElement('div'); agentPanel.className = 'card'; agentPanel.id = 'agent-panel'; agentPanel.hidden = !compiler.isAgent;
+agentPanel.innerHTML = `<h3>TT ESPStudio Agent · bản thử nghiệm</h3><p>Website giữ trình soạn thảo. Build và nạp chạy trên máy Windows của bạn qua Agent. Chưa có bộ cài người dùng cuối trong bản preview này.</p><p id="agent-help">Mở Agent trên máy, cho phép trình duyệt truy cập loopback nếu được hỏi, rồi kết nối. Mã ghép nối chỉ xuất hiện trên Agent.</p><button id="agent-pair-request">Yêu cầu ghép nối</button><form id="agent-pair-form" hidden><label>Mã 8 chữ số trên Agent<input id="agent-pair-code" inputmode="numeric" autocomplete="off" pattern="[0-9]{8}" maxlength="8" required></label><button type="submit">Xác nhận ghép nối</button></form><button id="agent-unpair" class="quiet">Ngắt ghép nối</button><p id="agent-message" role="status"></p>`;
+$('device-view').prepend(agentPanel);
+const cancelButton = document.createElement('button'); cancelButton.id = 'cancel-build'; cancelButton.textContent = 'Hủy biên dịch'; cancelButton.hidden = true;
+$('clear-log').before(cancelButton);
+let activeJob: string | null = null;
+let pairingRequest = '';
+connectButton.onclick = () => { if (compiler.isAgent) setView('device'); void connectBridge(); };
+$('agent-pair-request').onclick = async () => {
+  try {
+    pairingRequest = (await compiler.requestPairing()).requestId;
+    $('agent-pair-form').hidden = false; $('agent-message').textContent = 'Kiểm tra đúng địa chỉ website trên cửa sổ Agent rồi nhập mã tại đây.';
+    $<HTMLInputElement>('agent-pair-code').focus();
+  } catch (error) { $('agent-message').textContent = describeError(error); }
+};
+$('agent-pair-form').onsubmit = async event => {
+  event.preventDefault();
+  try { await compiler.pair(pairingRequest, $<HTMLInputElement>('agent-pair-code').value); $<HTMLInputElement>('agent-pair-code').value = ''; $('agent-pair-form').hidden = true; await connectBridge(); }
+  catch (error) { $('agent-message').textContent = describeError(error); }
+};
+$('agent-unpair').onclick = async () => {
+  if (busy) return notify('Chờ tác vụ hiện tại kết thúc trước khi ngắt ghép nối.', true);
+  try { await compiler.disconnect(); } catch { /* local session is cleared even offline */ }
+  token = ''; lastBuild = null; $('bridge-state').textContent = 'Agent chưa ghép nối'; $('agent-message').textContent = 'Đã xóa phiên ghép nối trên web.'; syncButtons();
+};
+cancelButton.onclick = async () => { try { if (activeJob) await compiler.request('cancel', { jobId: activeJob }); } catch (error) { notify(describeError(error), true); } };
 const codeHighlight = document.createElement('div');
 codeHighlight.id = 'code-highlight'; codeHighlight.hidden = true; codeHighlight.setAttribute('aria-hidden', 'true');
 codeArea.before(codeHighlight);
@@ -264,26 +293,28 @@ $('history').onclick = () => {
 $('close-history').onclick = () => $<HTMLDialogElement>('history-dialog').close();
 $('clear-history').onclick = () => { if (confirm('Xuất toàn bộ project rồi xóa lịch sử C++ khỏi phiên làm việc?')) { exportProject(); project.codeHistory = []; persist(); syncButtons(); $<HTMLDialogElement>('history-dialog').close(); } };
 async function api(path: string, body?: unknown) {
-  const response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': token }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const data = await response.json(); if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`); return data;
+  try { return await compiler.request(path, body); }
+  catch (error) { if (!compiler.token) { token = ''; lastBuild = null; syncButtons(); } throw error; }
 }
 async function connectBridge() {
   try {
-    const session = await api('session');
-    if (session.version !== '0.2.1') { token = ''; $('bridge-state').textContent = 'Cần khởi động lại bridge'; notify('Giao diện đã cập nhật lên 0.2.1. Hãy đóng terminal cũ, chạy lại Start-ESPStudio.cmd rồi tải lại trang.'); syncButtons(); return; }
-    token = session.token; $('bridge-state').textContent = '● Bridge sẵn sàng';
+    await compiler.connect();
+    token = compiler.token; $('bridge-state').textContent = compiler.isAgent ? '● Agent đã ghép nối' : '● Bridge sẵn sàng'; $('agent-message').textContent = 'Compiler đã kết nối và sẵn sàng.';
   }
-  catch { token = ''; $('bridge-state').textContent = 'Bridge chưa chạy'; if (!startupError) notify('Chạy npm start để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'); }
+  catch (error) { token = ''; lastBuild = null; $('bridge-state').textContent = compiler.isAgent ? 'Agent chưa sẵn sàng' : 'Bridge chưa chạy'; $('agent-message').textContent = describeError(error); if (!startupError) notify(compiler.isAgent ? `Chưa thể build/nạp: ${describeError(error)} Trình soạn thảo vẫn hoạt động.` : 'Chạy Start-ESPStudio.cmd để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'); }
   syncButtons();
 }
-type Job = { id: string; status: 'running' | 'success' | 'error'; log: string; kind: string };
+type Job = { id: string; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; kind: string };
 async function watchJob(job: Job) {
+  activeJob = job.id; cancelButton.hidden = !compiler.isAgent || job.kind !== 'build';
+  try {
   while (true) {
     $('build-log').textContent = job.log; $('build-log').scrollTop = $('build-log').scrollHeight;
     $('job-status').textContent = `${job.kind === 'build' ? 'Biên dịch' : 'Nạp'} · ${job.status}`;
     if (job.status !== 'running') return job;
     await new Promise(resolve => setTimeout(resolve, 800)); job = await api(`jobs/${job.id}`);
   }
+  } finally { activeJob = null; cancelButton.hidden = true; }
 }
 $('build').onclick = async () => {
   if (project.mode === 'blocks') refreshCode();
@@ -329,4 +360,5 @@ renderConfig(); refreshCode();
 requestAnimationFrame(() => workspace.scrollCenter());
 if (startupError) { notify(startupError, true); const rescue = document.createElement('button'); rescue.textContent = 'Tải bản cứu hộ & cho phép lưu mới'; rescue.onclick = () => { download('espstudio-recovery.json', damagedSave); storageLocked = false; persist(); notify('Bản gốc đã được tải xuống. Có thể lưu project mới.'); }; $('notice').append(rescue); }
 else persist();
-void connectBridge();
+if (!compiler.isAgent || compiler.token) void connectBridge();
+else { $('bridge-state').textContent = 'Agent chưa kết nối'; syncButtons(); }

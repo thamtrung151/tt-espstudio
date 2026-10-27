@@ -1,5 +1,14 @@
 # Kiểm chứng — 27/10/2026
 
+## Web + Agent preview
+
+- Baseline Git 2c67d82 giữ bản 0.2.1 đang chạy; nhánh nâng cấp feature/web-local-agent.
+- 29/29 test lõi/API đạt, gồm HTTP server thật kiểm tra Host/Origin, pairing, token, thời hạn, số lần đoán, từ chối request không được phép. Fetch không cho giả Host trong test đầu; ca Host được chuyển sang node:http để kiểm tra header thực.
+- 9/9 test UI cũ đạt; hai test firmware của bridge cũ bỏ qua trong lượt hồi quy.
+- 2/2 bài browser Agent đạt: web tĩnh vẫn sửa/lưu khi không Agent, ghép nối/thu hồi phiên/reload; ESP32-S3 GPIO38 build thật qua web tĩnh → Agent → PlatformIO thành công, C++ cố ý sai trả error cùng compiler log. Không nạp USB.
+- TypeScript, build local và build web tĩnh đạt. Còn cảnh báo bundle Blockly lớn.
+- Kết quả trên dùng Edge headless, HTTP preview 3212 và Agent 3217 với PlatformIO sẵn có. Chưa thay thế kiểm tra HTTPS public/Chrome/Windows sạch/bộ cài/USB thật qua Agent.
+
 ## Logic thiết bị PWM / motor và cấu hình nháp
 
 - Xóa thông báo lỗi sinh code cũ khi Blockly đã được sửa hợp lệ; placeholder __missing__ được giải thích là block chưa chọn thiết bị. Dropdown hiển thị cả tên và ID.

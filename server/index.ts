@@ -21,7 +21,7 @@ const server = createServer(async (req, res) => {
   if (req.headers['sec-fetch-site'] === 'cross-site') return send(403, { error: 'Không cho phép truy cập cross-site.' });
   const url = new URL(req.url ?? '/', 'http://127.0.0.1:3210');
   try {
-    if (url.pathname === '/api/session' && req.method === 'GET') return send(200, { token, pio: findPio(), version: '0.2.1' });
+    if (url.pathname === '/api/session' && req.method === 'GET') return send(200, { token, pio: findPio(), version: '0.2.1', apiVersion: 1 });
     if (url.pathname.startsWith('/api/')) {
       if (req.headers['x-studio-token'] !== token) return send(403, { error: 'Phiên làm việc hết hạn. Tải lại trang.' });
       if (url.pathname === '/api/ports' && req.method === 'GET') return send(200, await listPorts(root));
