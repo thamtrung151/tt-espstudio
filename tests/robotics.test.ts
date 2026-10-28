@@ -35,7 +35,7 @@ describe('pin capabilities and board compatibility', () => {
     expect(parseConfig(c)).toEqual(c); expect(configWarnings(c).join()).toContain('dùng chung');
   });
   it('accepts every GPIO index 0–48 on ESP32 and S3 without a model whitelist', () => {
-    for (const target of ['esp32','esp32s3'] as const) for (let pin = 0; pin <= 48; pin++) {
+    for (const target of ['esp32','esp32s3','esp32s2','esp32c3'] as const) for (let pin = 0; pin <= 48; pin++) {
       const c: Config = { ...emptyBoard(target), devices: [{ id: 'led', label: 'LED', driver: 'gpio.output', pin, activeLow: false }] };
       c.board.exposedPins = [pin];
       expect(parseConfig(JSON.parse(JSON.stringify(c)))).toEqual(c);

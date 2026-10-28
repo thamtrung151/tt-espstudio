@@ -1,9 +1,109 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AgentAuth } from '../server/agent-auth';
 import { createAgent, parseOrigins } from '../server/agent';
+import { isolatedToolchain } from '../server/runtime';
+import { type Job } from '../server/service';
+
+describe('native consent and private runtime', () => {
+  const origin = 'https://owner.github.io';
+  it('requires both native approval and an origin-bound claim secret; consumes the claim once', async () => {
+    let approve!: (value: boolean) => void;
+    const auth = new AgentAuth(new Set([origin, 'https://other.example']), () => {});
+    const request = auth.requestNative(origin, () => new Promise(resolve => { approve = resolve; }));
+    await Promise.resolve();
+    expect(auth.pollNative(origin, request.requestId, request.claimSecret)).toEqual({ state: 'pending' });
+    expect(() => auth.pollNative('https://other.example', request.requestId, request.claimSecret)).toThrow();
+    expect(() => auth.pollNative(origin, request.requestId, '0'.repeat(64))).toThrow();
+    expect(() => auth.requestNative(origin, async () => true)).toThrow();
+    approve(true); await new Promise(resolve => setImmediate(resolve));
+    const result = auth.pollNative(origin, request.requestId, request.claimSecret);
+    expect(result.state).toBe('approved');
+    if (result.state !== 'approved') throw new Error('Expected approved claim');
+    expect(auth.valid(origin, result.token)).toBe(true);
+    expect(auth.valid('https://other.example', result.token)).toBe(false);
+    expect(() => auth.pollNative(origin, request.requestId, request.claimSecret)).toThrow();
+  });
+  it('fails closed on denial, dialog failure, cancellation and late approval', async () => {
+    let now = 1000;
+    const auth = new AgentAuth(new Set([origin]), () => {}, () => now);
+    for (const approve of [async () => false, async (): Promise<boolean> => { throw new Error('No desktop'); }]) {
+      const request = auth.requestNative(origin, approve);
+      await new Promise(resolve => setImmediate(resolve));
+      expect(auth.pollNative(origin, request.requestId, request.claimSecret)).toEqual({ state: 'denied' });
+      now += 30001;
+    }
+    let finish!: (allowed: boolean) => void;
+    const cancelled = auth.requestNative(origin, () => new Promise(resolve => { finish = resolve; }));
+    await Promise.resolve();
+    auth.cancelNative(origin, cancelled.requestId, cancelled.claimSecret);
+    finish(true); await new Promise(resolve => setImmediate(resolve));
+    expect(() => auth.pollNative(origin, cancelled.requestId, cancelled.claimSecret)).toThrow();
+    now += 30001;
+    const expired = auth.requestNative(origin, () => new Promise(resolve => { finish = resolve; }));
+    await Promise.resolve(); now += 300001;
+    finish(true); await new Promise(resolve => setImmediate(resolve));
+    expect(() => auth.pollNative(origin, expired.requestId, expired.claimSecret)).toThrow();
+  });
+  it('uses bundled Python and private directories, discarding inherited compiler overrides', () => {
+    const runtime = path.resolve('private-runtime'); const data = path.resolve('private-data');
+    const inherited = { PATH: 'existing-path', PLATFORMIO_CORE_DIR: 'global-core', PLATFORMIO_BUILD_FLAGS: '-include private', PYTHONPATH: 'global-python', PIP_INDEX_URL: 'https://untrusted.invalid', VIRTUAL_ENV: 'other-venv' };
+    const result = isolatedToolchain(runtime, data, inherited);
+    expect(result.executable).toBe(path.join(runtime, 'python', 'python.exe'));
+    expect(result.prefix).toEqual(['-I', '-X', 'utf8', '-m', 'platformio']);
+    expect(result.env.PLATFORMIO_CORE_DIR).toBe(path.join(data, 'platformio'));
+    for (const name of ['PLATFORMIO_BUILD_FLAGS', 'PYTHONPATH', 'PIP_INDEX_URL', 'VIRTUAL_ENV']) expect(result.env[name]).toBeUndefined();
+    expect(inherited.PLATFORMIO_CORE_DIR).toBe('global-core');
+    expect(() => isolatedToolchain('relative', data)).toThrow();
+  });
+});
+
+it('HTTP native pairing cannot downgrade to a code; upload denial or revoked session never starts a flash', async () => {
+  const { createServer } = await import('node:net'); const probe = createServer();
+  await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = (probe.address() as { port: number }).port;
+  await new Promise<void>(resolve => probe.close(() => resolve()));
+  const origin = 'https://owner.github.io';
+  let uploadConsent: () => Promise<boolean> = async () => false;
+  let resolveConsent: (allowed: boolean) => void = () => {};
+  const scratch = await mkdtemp(path.join(tmpdir(), 'esp-native-http-'));
+  const agent = createAgent({ port, root: scratch, origins: new Set([origin]), ready: () => true, announce: () => { throw new Error('Must not use code flow'); }, consent: request => request.kind === 'pair' ? Promise.resolve(true) : uploadConsent() });
+  const upload = vi.spyOn(agent.service, 'upload').mockRejectedValue(new Error('Unexpected upload; hardware calls are disabled in this test'));
+  await new Promise<void>(resolve => agent.server.listen(port, '127.0.0.1', resolve));
+  const call = (route: string, body: unknown, token = '') => fetch(`http://127.0.0.1:${port}/api/${route}`, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', 'X-Studio-Token': token }, body: JSON.stringify(body) });
+  try {
+    expect((await call('pair/request', {})).status).toBe(409);
+    const request = await (await call('pair/native', {})).json();
+    expect((await call('pair/status', { ...request, expiresAt: undefined, claimSecret: '0'.repeat(64) })).status).toBe(400);
+    const session = await (await call('pair/status', { requestId: request.requestId, claimSecret: request.claimSecret })).json();
+    expect(session.state).toBe('approved');
+    // Seed ownership with a mocked build; no compiler or USB calls.
+    const build: Job = { id: '00000000-0000-4000-8000-000000000001', kind: 'build', status: 'success', log: '', directory: '', target: 'esp32', exitCode: 0 };
+    agent.service.jobs.set(build.id, build);
+    vi.spyOn(agent.service, 'build').mockResolvedValue(build);
+    expect((await call('build', {}, session.token)).status).toBe(202);
+    expect((await call('upload', { buildId: build.id, port: 'COM6' }, session.token)).status).toBe(403);
+    expect(upload).not.toHaveBeenCalled();
+    let approve!: (value: boolean) => void;
+    let seen!: () => void; const prompted = new Promise<void>(resolve => { seen = resolve; });
+    uploadConsent = () => new Promise(resolve => { approve = resolve; resolveConsent = resolve; seen(); });
+    const pending = call('upload', { buildId: build.id, port: 'COM6' }, session.token);
+    await prompted;
+    expect(agent.isBusy()).toBe(true);
+    expect((await call('upload', { buildId: build.id, port: 'COM6' }, session.token)).status).toBe(409);
+    await call('unpair', {}, session.token);
+    approve(true);
+    expect((await pending).status).toBe(401);
+    expect(upload).not.toHaveBeenCalled();
+    expect(agent.isBusy()).toBe(false);
+  } finally {
+    resolveConsent(false);
+    await new Promise<void>(resolve => agent.server.close(() => resolve()));
+    await rm(scratch, { recursive: true, force: true }); vi.restoreAllMocks();
+  }
+});
 
 describe('agent pairing boundary', () => {
   it('binds token to exact origin, expires, revokes, limits guesses and never exposes code in API', () => {

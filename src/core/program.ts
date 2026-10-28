@@ -96,7 +96,7 @@ export function generate(config: Config, program: Program): Generated {
 }
 export const projectSchema = z.object({
   schemaVersion: z.literal(1), name: z.string().min(1).max(80), config: configSchema,
-  mode: z.enum(['blocks', 'code']), workspace: z.record(z.unknown()),
+  mode: z.enum(['blocks', 'code']), workspace: z.record(z.string(), z.unknown()),
   code: z.string().max(200000),
   codeHistory: z.array(z.object({ savedAt: z.string(), code: z.string().max(200000), config: configSchema }).strict()).max(50),
 }).strict();

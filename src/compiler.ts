@@ -1,24 +1,32 @@
 export const COMPILER_API_VERSION = 1;
-export type CompilerSession = { apiVersion?: number; version: string; token?: string; setup?: 'ready' | 'required' };
+export type CompilerSession = { apiVersion?: number; version: string; token?: string; targets?: string[]; setup?: 'ready' | 'required'; capabilities?: { nativePairing?: boolean; nativeUploadConsent?: boolean } };
+export type PairingRequest = { requestId: string; claimSecret?: string; expiresAt?: number };
 export interface CompilerService {
   readonly isAgent: boolean;
   token: string;
   request<T = any>(path: string, body?: unknown): Promise<T>;
   connect(): Promise<CompilerSession>;
-  requestPairing(): Promise<{ requestId: string }>;
+  requestPairing(): Promise<PairingRequest>;
+  finishNativePairing(request: PairingRequest): Promise<void>;
+  nativeUploadConsent: boolean;
+  supportedTargets: string[];
   pair(requestId: string, code: string): Promise<void>;
   disconnect(): Promise<void>;
 }
 export class HttpCompilerService implements CompilerService {
   token = '';
+  nativeUploadConsent = false;
+  supportedTargets = ['esp32', 'esp32s3'];
   constructor(readonly isAgent: boolean) {
     if (isAgent) { try { this.token = sessionStorage.getItem('tt-espstudio.agent-session.v1') ?? ''; } catch { /* memory-only session */ } }
   }
   async request<T = any>(path: string, body?: unknown): Promise<T> {
-    const base = this.isAgent ? 'http://127.0.0.1:3217/api/' : '/api/';
+    const configuredPort = Number(import.meta.env.VITE_AGENT_PORT ?? 3217);
+    if (!Number.isInteger(configuredPort) || configuredPort < 1024 || configuredPort > 65535) throw new Error('Cổng Agent trong bản web không hợp lệ.');
+    const base = this.isAgent ? `http://127.0.0.1:${configuredPort}/api/` : '/api/';
     let response: Response;
     try {
-      response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', 'X-Studio-Token': this.token }, body: body === undefined ? undefined : JSON.stringify(body) });
+      response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(path === 'upload' && this.nativeUploadConsent ? 150000 : 20000), headers: { 'Content-Type': 'application/json', 'X-Studio-Token': this.token }, body: body === undefined ? undefined : JSON.stringify(body) });
     } catch {
       throw new Error(this.isAgent ? 'Không kết nối được Agent. Hãy mở Agent, kiểm tra đúng website được phép và quyền truy cập mạng cục bộ/loopback trong cài đặt website của Chrome/Edge.' : 'Không kết nối được compiler local. Hãy kiểm tra launcher.');
     }
@@ -33,7 +41,9 @@ export class HttpCompilerService implements CompilerService {
     if (this.isAgent) {
       const health = await this.request<CompilerSession>('health');
       if (health.apiVersion !== COMPILER_API_VERSION) throw new Error('Web và Agent không tương thích. Cần cập nhật Agent.');
-      if (!this.token) throw new Error('Agent đã chạy. Hãy ghép nối website bằng mã hiển thị trên Agent.');
+      this.nativeUploadConsent = health.capabilities?.nativeUploadConsent === true;
+      this.supportedTargets = health.targets ?? ['esp32', 'esp32s3'];
+      if (!this.token) throw new Error(health.capabilities?.nativePairing ? 'Agent đã chạy. Bấm Yêu cầu ghép nối rồi xác nhận trên cửa sổ Agent.' : 'Agent đã chạy. Hãy ghép nối website bằng mã hiển thị trên Agent.');
     }
     const session = await this.request<CompilerSession>('session');
     if (session.apiVersion !== COMPILER_API_VERSION && !(session.apiVersion === undefined && !this.isAgent && session.version === '0.2.1')) throw new Error('API compiler không tương thích. Khởi động lại hoặc cập nhật Agent.');
@@ -41,7 +51,31 @@ export class HttpCompilerService implements CompilerService {
     if (session.setup === 'required') throw new Error('Agent đã ghép nối nhưng chưa cài xong toolchain. Hoàn tất thiết lập Agent trước khi build.');
     return session;
   }
-  requestPairing() { return this.request<{ requestId: string }>('pair/request', {}); }
+  async requestPairing() {
+    const health = await this.request<CompilerSession>('health');
+    if (health.apiVersion !== COMPILER_API_VERSION) throw new Error('Web và Agent không tương thích. Cần cập nhật Agent.');
+    return this.request<PairingRequest>(health.capabilities?.nativePairing ? 'pair/native' : 'pair/request', {});
+  }
+  async finishNativePairing(request: PairingRequest) {
+    const body = { requestId: request.requestId, claimSecret: request.claimSecret };
+    const deadline = Math.min(request.expiresAt ?? 0, Date.now() + 300000);
+    let claimed = false;
+    try {
+      while (Date.now() < deadline) {
+        const result = await this.request<{ state: 'pending' | 'approved' | 'denied'; token?: string; apiVersion?: number }>('pair/status', body);
+        if (result.state === 'denied') throw new Error('Đã từ chối hoặc hết thời gian xác nhận trên Agent.');
+        if (result.state === 'approved') {
+          if (result.apiVersion !== COMPILER_API_VERSION || !result.token || !/^[0-9a-f]{64}$/.test(result.token)) throw new Error('Phản hồi ghép nối không hợp lệ.');
+          this.saveToken(result.token); claimed = true; return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      throw new Error('Yêu cầu ghép nối đã hết hạn.');
+    } finally {
+      // Also cancel pending requests if polling failed; no delayed session is created.
+      if (!claimed) await this.request('pair/cancel', body).catch(() => {});
+    }
+  }
   async pair(requestId: string, code: string) {
     const session = await this.request<{ token: string; apiVersion: number }>('pair/confirm', { requestId, code });
     if (session.apiVersion !== COMPILER_API_VERSION) throw new Error('API Agent không tương thích.');

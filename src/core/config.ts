@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const targets = {
   esp32: { label: 'ESP32 / WROOM', board: 'esp32dev', pins: [0,1,2,3,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39], inputOnly: [34,35,36,39], noPull: [34,35,36,39], adc1: [32,33,34,35,36,39], adc2: [0,2,4,12,13,14,15,25,26,27], strapping: [0,2,5,12,15], serialPins: [1,3], pwmChannels: 16 },
   esp32s3: { label: 'ESP32-S3', board: 'esp32-s3-devkitc-1', pins: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,38,39,40,41,42,43,44,45,46,47,48], inputOnly: [46], noPull: [46], adc1: [1,2,3,4,5,6,7,8,9,10], adc2: [11,12,13,14,15,16,17,18,19,20], strapping: [0,3,45,46], serialPins: [43,44], pwmChannels: 8 },
+  esp32s2: { label: 'ESP32-S2', board: 'esp32-s2-saola-1', pins: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,33,34,35,36,37,38,39,40,41,42,43,44,45,46], inputOnly: [46], noPull: [46], adc1: [1,2,3,4,5,6,7,8,9,10], adc2: [11,12,13,14,15,16,17,18,19,20], strapping: [0,45,46], serialPins: [43,44], pwmChannels: 8 },
+  esp32c3: { label: 'ESP32-C3', board: 'esp32-c3-devkitm-1', pins: [0,1,2,3,4,5,6,7,8,9,10,11,18,19,20,21], inputOnly: [], noPull: [], adc1: [0,1,2,3,4], adc2: [5], strapping: [2,8,9], serialPins: [20,21], pwmChannels: 6 },
 } as const;
 const has = (values: readonly number[], pin: number) => values.includes(pin);
 // Numeric representation only, NOT a chip/board whitelist. The board owner
@@ -45,7 +47,7 @@ export function allocatePwm(config: { board: { target: keyof typeof targets }; d
 }
 export const configSchema = z.object({
   schemaVersion: z.literal(1),
-  board: z.object({ name: z.string().trim().min(1).max(80), target: z.enum(['esp32','esp32s3']), exposedPins: z.array(pin).max(256) }).strict(),
+  board: z.object({ name: z.string().trim().min(1).max(80), target: z.enum(['esp32','esp32s3','esp32s2','esp32c3']), exposedPins: z.array(pin).max(256) }).strict(),
   devices: z.array(deviceSchema).max(32),
 }).strict().superRefine((config, ctx) => {
   const exposed = new Set<number>();
@@ -74,18 +76,19 @@ export function configWarnings(config: Config): string[] {
       if (has(target.strapping, pin)) warnings.push(`${d.label} · GPIO${pin}: chân strapping; mức điện lúc reset/nạp ảnh hưởng khởi động. Có thể sử dụng sau khi khởi động.`);
       if (config.board.target === 'esp32' && pin === 12) warnings.push('GPIO12: kéo HIGH lúc reset có thể chọn sai điện áp flash.');
       if (config.board.target === 'esp32' && [16,17].includes(pin)) warnings.push(`GPIO${pin}: hợp lệ cho WROOM; module có PSRAM như WROVER có thể chiếm chân này.`);
-      if (config.board.target === 'esp32s3' && [19,20].includes(pin)) warnings.push(`GPIO${pin}: dùng chung USB native; kiểm tra cổng USB đang dùng.`);
+      if (['esp32s2','esp32s3'].includes(config.board.target) && [19,20].includes(pin)) warnings.push(`GPIO${pin}: dùng chung USB native; kiểm tra cổng USB đang dùng.`);
+      if (config.board.target === 'esp32c3' && [18,19].includes(pin)) warnings.push(`GPIO${pin}: dùng chung USB Serial/JTAG; kiểm tra cổng USB đang dùng.`);
     }
     if (d.driver === 'gpio.input' && d.pull !== 'none' && has(target.noPull, d.pin)) warnings.push(`${d.label} · GPIO${d.pin}: tài liệu target không hỗ trợ pull nội; kiểm tra điện trở ngoài.`);
     if (d.driver === 'adc.input' && !has(target.adc1, d.pin) && !has(target.adc2, d.pin)) warnings.push(`${d.label} · GPIO${d.pin}: chưa có trong bảng ADC tham khảo của target; kiểm tra chức năng ADC thực tế.`);
-    if (d.driver === 'adc.input' && has(target.adc2, d.pin)) warnings.push(`${d.label}: ADC2 dùng chung tài nguyên với Wi-Fi; ưu tiên ADC1 khi cần Wi-Fi.`);
+    if (d.driver === 'adc.input' && has(target.adc2, d.pin)) warnings.push(config.board.target === 'esp32c3' ? `${d.label}: ADC2 trên ESP32-C3 có hạn chế phần cứng/driver; ưu tiên ADC1 và kiểm chứng kết quả đọc thực tế.` : `${d.label}: ADC2 dùng chung tài nguyên với Wi-Fi; ưu tiên ADC1 khi cần Wi-Fi.`);
     if (d.driver === 'servo.pwm') warnings.push(`${d.label}: nguồn servo riêng phù hợp, chung GND; kiểm tra dải xung trước khi gắn tải.`);
     if (d.driver === 'motor.hbridge2') warnings.push(`${d.label}: cần driver cầu H có đầu IN1/IN2 (hai PWM); GPIO không cấp điện trực tiếp cho motor. STBY/EN nếu có phải đấu riêng theo IC.`);
   }
   return [...new Set(warnings)];
 }
 export function template(target: keyof typeof targets = 'esp32'): Config & { devices: Extract<Device, { driver: 'gpio.output' }>[] } {
-  return { schemaVersion: 1, board: { name: target === 'esp32' ? 'ESP32 DevKit · Bàn thực hành' : 'ESP32-S3 · Board mẫu', target, exposedPins: [...targets[target].pins] }, devices: [{ id: 'status_led', label: 'LED ngoài', driver: 'gpio.output', pin: target === 'esp32' ? 23 : 4, activeLow: false }] };
+  return { schemaVersion: 1, board: { name: target === 'esp32' ? 'ESP32 DevKit · Bàn thực hành' : `${targets[target].label} · Board mẫu`, target, exposedPins: [...targets[target].pins] }, devices: [{ id: 'status_led', label: 'LED ngoài', driver: 'gpio.output', pin: target === 'esp32' ? 23 : 4, activeLow: false }] };
 }
 export function emptyBoard(target: keyof typeof targets = 'esp32'): Config { return { ...template(target), board: { ...template(target).board, name: 'Board của tôi' }, devices: [] }; }
 export function parseConfig(value: unknown): Config { return configSchema.parse(value); }

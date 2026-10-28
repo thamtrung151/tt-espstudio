@@ -1,10 +1,12 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { createInterface } from 'node:readline';
 import { z } from 'zod';
 import { AgentAuth, AGENT_API_VERSION, AGENT_VERSION } from './agent-auth';
 import { BuildService, listPorts, runProcess, type Job } from './service';
-import { describeError } from '../src/core/config';
+import { describeError, targets } from '../src/core/config';
+import { createNativeConsent, type ConsentRequest } from './native-consent';
 
 export function parseOrigins(value: string): Set<string> {
   const origins = value.split(',').map(s => s.trim()).filter(Boolean);
@@ -21,12 +23,13 @@ async function json(req: IncomingMessage) {
   for await (const chunk of req) { size += chunk.length; if (size > 1000000) throw new Error('Request quá lớn.'); chunks.push(chunk); }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
-export function createAgent(options: { port: number; root: string; origins: Set<string>; announce: (origin: string, code: string) => void; ready: () => boolean }) {
+export function createAgent(options: { port: number; root: string; origins: Set<string>; announce: (origin: string, code: string) => void; ready: () => boolean; consent?: (request: ConsentRequest) => Promise<boolean> }) {
   const service = new BuildService(path.join(options.root, 'builds'));
   const auth = new AgentAuth(options.origins, options.announce);
   const owners = new Map<string, string>();
   let portsTask: ReturnType<typeof listPorts> | undefined;
   let portsExpire = 0;
+  let awaitingUploadConsent = false;
   const publicJob = (job: Job) => ({ id: job.id, kind: job.kind, status: job.status, log: job.log.split(options.root).join('[Agent data]'), target: job.target, exitCode: job.exitCode });
   const server = createServer(async (req, res) => {
     const send = (status: number, data: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
@@ -43,9 +46,24 @@ export function createAgent(options: { port: number; root: string; origins: Set<
     }
     const route = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
     try {
-      if (route === '/api/health' && req.method === 'GET') return send(200, { apiVersion: AGENT_API_VERSION, version: AGENT_VERSION, setup: options.ready() ? 'ready' : 'required', busy: service.busy });
-      if (route === '/api/pair/request' && req.method === 'POST') { z.object({}).strict().parse(await json(req)); return send(200, auth.request(origin)); }
+      if (route === '/api/health' && req.method === 'GET') return send(200, { apiVersion: AGENT_API_VERSION, version: AGENT_VERSION, targets: Object.keys(targets), setup: options.ready() ? 'ready' : 'required', busy: service.busy || awaitingUploadConsent, capabilities: { nativePairing: !!options.consent, nativeUploadConsent: !!options.consent } });
+      if (route === '/api/pair/native' && req.method === 'POST') {
+        z.object({}).strict().parse(await json(req));
+        if (!options.consent) return send(404, { error: 'Agent này dùng mã ghép nối.' });
+        return send(200, auth.requestNative(origin, origin => options.consent!({ kind: 'pair', origin })));
+      }
+      if (['/api/pair/status', '/api/pair/cancel'].includes(route) && req.method === 'POST') {
+        const data = z.object({ requestId: z.string().uuid(), claimSecret: z.string().regex(/^[0-9a-f]{64}$/) }).strict().parse(await json(req));
+        if (route === '/api/pair/status') return send(200, auth.pollNative(origin, data.requestId, data.claimSecret));
+        auth.cancelNative(origin, data.requestId, data.claimSecret); return send(200, { ok: true });
+      }
+      if (route === '/api/pair/request' && req.method === 'POST') {
+        z.object({}).strict().parse(await json(req));
+        if (options.consent) return send(409, { error: 'Agent này xác nhận trực tiếp trên Windows. Tải lại/cập nhật website để ghép nối không cần mã.' });
+        return send(200, auth.request(origin));
+      }
       if (route === '/api/pair/confirm' && req.method === 'POST') {
+        if (options.consent) return send(403, { error: 'Agent này yêu cầu xác nhận trực tiếp trên Windows.' });
         const data = z.object({ requestId: z.string().uuid(), code: z.string().max(16) }).strict().parse(await json(req));
         return send(200, auth.confirm(origin, data.requestId, data.code));
       }
@@ -58,6 +76,7 @@ export function createAgent(options: { port: number; root: string; origins: Set<
         return send(job ? 200 : 404, job ? publicJob(job) : { error: 'Không tìm thấy tác vụ trong phiên này.' });
       }
       if (!options.ready()) return send(503, { error: 'Agent chưa có toolchain. Hoàn tất thiết lập trên máy này.' });
+      if (awaitingUploadConsent) return send(409, { error: 'Đang chờ xác nhận nạp trên Agent.' });
       if (route === '/api/ports' && req.method === 'GET') {
         if (service.busy) return send(409, { error: 'Chờ build/nạp kết thúc trước khi quét cổng.' });
         if (!portsTask || Date.now() >= portsExpire) {
@@ -80,15 +99,24 @@ export function createAgent(options: { port: number; root: string; origins: Set<
         service.cancel(jobId); return send(202, { ok: true });
       }
       if (route === '/api/upload') {
-        const { buildId, port } = z.object({ buildId: z.string().uuid(), port: z.string().min(1).max(200) }).strict().parse(data);
+        const { buildId, port } = z.object({ buildId: z.string().uuid(), port: z.string().min(1).max(200).regex(/^[^\s\x00-\x1f\x7f]+$/) }).strict().parse(data);
         if (owners.get(buildId) !== token) return send(404, { error: 'Không tìm thấy bản build trong phiên này.' });
-        const job = await service.upload(buildId, port); owners.set(job.id, token); return send(202, publicJob(job));
+        const build = service.jobs.get(buildId);
+        if (service.busy || !build || build.kind !== 'build' || build.status !== 'success') return send(409, { error: 'Cần bản build thành công và Agent rảnh trước khi nạp.' });
+        awaitingUploadConsent = true;
+        try {
+          if (options.consent && !await options.consent({ kind: 'upload', origin, port, target: build.target, buildId })) return send(403, { error: 'Đã từ chối hoặc hết thời gian xác nhận nạp trên Agent.' });
+          if (!auth.valid(origin, token)) return send(401, { error: 'Phiên đã hết hạn hoặc bị ngắt trong lúc chờ xác nhận.' });
+          // A disconnected caller must not start a delayed flash after the dialog.
+          if (res.destroyed) return;
+          const job = await service.upload(buildId, port); owners.set(job.id, token); return send(202, publicJob(job));
+        } finally { awaitingUploadConsent = false; }
       }
       return send(404, { error: 'Không tìm thấy API.' });
     } catch (error) { send(400, { error: describeError(error) }); }
   });
   server.requestTimeout = 15000; server.headersTimeout = 10000;
-  return { server, service };
+  return { server, service, isBusy: () => service.busy || awaitingUploadConsent };
 }
 
 export async function startAgent() {
@@ -97,17 +125,34 @@ export async function startAgent() {
   const root = process.env.ESPSTUDIO_AGENT_DATA ?? path.join(process.env.LOCALAPPDATA ?? process.cwd(), 'TTESPStudio', 'agent');
   await mkdir(root, { recursive: true });
   // Production runtime must be isolated. Existing developer PlatformIO is opt-in only.
-  if (process.env.ESPSTUDIO_AGENT_DEV !== '1') {
+  if (!process.env.ESPSTUDIO_AGENT_RUNTIME && process.env.ESPSTUDIO_AGENT_DEV !== '1') {
     process.env.PLATFORMIO_CORE_DIR = path.join(root, 'platformio');
     process.env.ESPSTUDIO_PIO = path.join(root, 'python', 'Scripts', 'pio.exe');
   }
-  const origins = parseOrigins(process.env.ESPSTUDIO_AGENT_ORIGINS ?? 'http://127.0.0.1:5173,http://127.0.0.1:3210');
+  const origins = parseOrigins(process.env.ESPSTUDIO_AGENT_ORIGINS ?? (process.env.ESPSTUDIO_AGENT_RUNTIME ? 'https://thamtrung151.github.io' : 'http://127.0.0.1:5173,http://127.0.0.1:3210'));
   let ready = false;
-  const agent = createAgent({ port, root, origins, ready: () => ready, announce: (origin, code) => {
+  const consent = process.platform === 'win32' && process.env.ESPSTUDIO_AGENT_RUNTIME
+    ? createNativeConsent(path.join(process.env.ESPSTUDIO_AGENT_RUNTIME, 'consent.ps1')) : undefined;
+  const agent = createAgent({ port, root, origins, ready: () => ready, consent, announce: (origin, code) => {
     console.log(`\nWebsite yêu cầu ghép nối: ${origin}\nChỉ nhập mã sau vào website nếu CHÍNH BẠN vừa yêu cầu: ${code}\nMã hết hạn sau 5 phút. Không chia sẻ mã.\n`);
   } });
-  agent.server.on('error', error => { console.error('Không mở được Agent (có thể cổng đang bận):', error.message); process.exitCode = 1; });
+  agent.server.on('error', error => {
+    console.error('Không mở được Agent (có thể cổng đang bận):', error.message);
+    process.exitCode = 1;
+    // A packaged parent pipe otherwise keeps an unusable Agent alive indefinitely.
+    if (process.env.ESPSTUDIO_AGENT_PARENT_PIPE === '1') process.exit(1);
+  });
   agent.server.listen(port, '127.0.0.1', () => console.log(`TT ESPStudio Agent ${AGENT_VERSION} · API v1 · http://127.0.0.1:${port}\nWebsites: ${[...origins].join(', ')}\nCtrl+C để thoát. Chế độ preview, chưa phải bộ cài người dùng cuối.`));
+  // Private parent pipe only; no remote endpoint can stop the Agent or a flash.
+  if (process.env.ESPSTUDIO_AGENT_PARENT_PIPE === '1' && process.env.ESPSTUDIO_AGENT_RUNTIME) {
+    const input = createInterface({ input: process.stdin });
+    input.on('line', line => {
+      if (line !== 'shutdown') return;
+      if (agent.isBusy()) { console.log('ESPSTUDIO_SHUTDOWN_BUSY'); return; }
+      agent.server.close(() => { input.close(); process.exit(0); });
+      agent.server.closeIdleConnections();
+    });
+  }
   try { ready = await runProcess(['--version'], root, () => {}, 15000) === 0; } catch { ready = false; }
   console.log(ready ? 'PlatformIO sẵn sàng; gói target sẽ được kiểm tra khi build.' : 'Setup required: chưa tìm thấy PlatformIO trong môi trường Agent.');
   return agent;

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parseConfig, platformioIni } from '../src/core/config';
 import { z } from 'zod';
+import { isolatedToolchain } from './runtime';
 
 export function findPio() {
   if (process.env.ESPSTUDIO_PIO) return process.env.ESPSTUDIO_PIO;
@@ -17,7 +18,11 @@ export const buildRequest = z.object({ config: z.unknown(), code: z.string().min
 export function runProcess(args: string[], cwd: string, onData: (chunk: string) => void, timeoutMs = 300000, signal?: AbortSignal): Promise<number> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return resolve(-1);
-    const child = spawn(findPio(), args, { cwd, shell: false, windowsHide: true, env: { ...process.env, PLATFORMIO_SETTING_ENABLE_TELEMETRY: 'No', PYTHONIOENCODING: 'utf-8' } });
+    const runtime = process.env.ESPSTUDIO_AGENT_RUNTIME;
+    const command = runtime
+      ? isolatedToolchain(runtime, process.env.ESPSTUDIO_AGENT_DATA ?? path.join(process.env.LOCALAPPDATA ?? homedir(), 'TTESPStudio', 'agent'))
+      : { executable: findPio(), prefix: [] as string[], env: { ...process.env, PLATFORMIO_SETTING_ENABLE_TELEMETRY: 'No', PYTHONIOENCODING: 'utf-8' } };
+    const child = spawn(command.executable, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, env: command.env });
     let timedOut = false;
     const stop = () => {
       if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
@@ -56,6 +61,7 @@ export class BuildService {
   }
   async upload(id: string, port: string) {
     if (this.busy) throw new Error('Một tác vụ đang chạy. Hãy chờ hoàn tất.');
+    if (this.jobs.size >= 100) throw new Error('Đã đạt giới hạn tác vụ trong phiên. Khởi động lại Agent.');
     const build = this.jobs.get(id);
     if (!build || build.kind !== 'build' || build.status !== 'success') throw new Error('Cần bản build thành công trong phiên này trước khi nạp.');
     this.busy = true;

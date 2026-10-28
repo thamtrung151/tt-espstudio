@@ -60,22 +60,37 @@ document.querySelector('#app')!.innerHTML = `
   <dialog id="history-dialog"><div class="card-heading"><h2>Lịch sử C++</h2><button id="close-history" aria-label="Đóng lịch sử">✕</button></div><p>Bản C++ và cấu hình đi kèm được giữ trong project. Tải xuống để tiếp tục sử dụng.</p><div id="history-items"></div><button id="clear-history">Xóa lịch sử sau khi đã xuất project</button></dialog>
 `;
 const codeArea = $<HTMLTextAreaElement>('code');
+// Keep the selector aligned with the schema/build profiles for every chip family.
+$<HTMLSelectElement>('config-target').replaceChildren(...Object.entries(targets).map(([id, target]) => new Option(target.label, id)));
 const connectButton = document.createElement('button'); connectButton.id = 'agent-connect'; connectButton.textContent = 'Kết nối compiler'; connectButton.className = 'quiet';
 $('bridge-state').after(connectButton);
 const agentPanel = document.createElement('div'); agentPanel.className = 'card'; agentPanel.id = 'agent-panel'; agentPanel.hidden = !compiler.isAgent;
 agentPanel.innerHTML = `<h3>TT ESPStudio Agent · bản thử nghiệm</h3><p>Website giữ trình soạn thảo. Build và nạp chạy trên máy Windows của bạn qua Agent. Chưa có bộ cài người dùng cuối trong bản preview này.</p><p id="agent-help">Mở Agent trên máy, cho phép trình duyệt truy cập loopback nếu được hỏi, rồi kết nối. Mã ghép nối chỉ xuất hiện trên Agent.</p><button id="agent-pair-request">Yêu cầu ghép nối</button><form id="agent-pair-form" hidden><label>Mã 8 chữ số trên Agent<input id="agent-pair-code" inputmode="numeric" autocomplete="off" pattern="[0-9]{8}" maxlength="8" required></label><button type="submit">Xác nhận ghép nối</button></form><button id="agent-unpair" class="quiet">Ngắt ghép nối</button><p id="agent-message" role="status"></p>`;
 $('device-view').prepend(agentPanel);
+$('agent-help').textContent = 'Mở Agent trên máy, bấm Yêu cầu ghép nối và làm theo hướng dẫn xác nhận. Cho phép trình duyệt kết nối tới Agent nếu được hỏi.';
+agentPanel.querySelector('p')!.textContent = 'ESPStudio Agent giúp biên dịch và nạp chương trình từ website lên board của bạn. Cài Agent và mở ứng dụng trước khi kết nối.';
+const launchAgent = document.createElement('a'); launchAgent.href = 'ttespstudio://connect'; launchAgent.textContent = 'Mở Agent đã cài'; launchAgent.className = 'quiet';
+launchAgent.title = 'Dành cho bộ cài có đăng ký liên kết TT ESPStudio. Bản Agent Dev vẫn mở bằng launcher .cmd.';
+$('agent-help').after(launchAgent);
 const cancelButton = document.createElement('button'); cancelButton.id = 'cancel-build'; cancelButton.textContent = 'Hủy biên dịch'; cancelButton.hidden = true;
 $('clear-log').before(cancelButton);
 let activeJob: string | null = null;
 let pairingRequest = '';
 connectButton.onclick = () => { if (compiler.isAgent) setView('device'); void connectBridge(); };
 $('agent-pair-request').onclick = async () => {
+  const button = $<HTMLButtonElement>('agent-pair-request');
+  button.disabled = true; $<HTMLButtonElement>('agent-unpair').disabled = true;
   try {
-    pairingRequest = (await compiler.requestPairing()).requestId;
+    const request = await compiler.requestPairing(); pairingRequest = request.requestId;
+    if (request.claimSecret) {
+      $('agent-pair-form').hidden = true;
+      $('agent-message').textContent = 'Kiểm tra địa chỉ website và chọn Có trên cửa sổ TT ESPStudio Agent. Không cần nhập mã.';
+      await compiler.finishNativePairing(request); await connectBridge(); return;
+    }
     $('agent-pair-form').hidden = false; $('agent-message').textContent = 'Kiểm tra đúng địa chỉ website trên cửa sổ Agent rồi nhập mã tại đây.';
     $<HTMLInputElement>('agent-pair-code').focus();
   } catch (error) { $('agent-message').textContent = describeError(error); }
+  finally { button.disabled = false; $<HTMLButtonElement>('agent-unpair').disabled = false; }
 };
 $('agent-pair-form').onsubmit = async event => {
   event.preventDefault();
@@ -296,12 +311,15 @@ async function api(path: string, body?: unknown) {
   try { return await compiler.request(path, body); }
   catch (error) { if (!compiler.token) { token = ''; lastBuild = null; syncButtons(); } throw error; }
 }
+let bridgeNotice = '';
 async function connectBridge() {
   try {
     await compiler.connect();
     token = compiler.token; $('bridge-state').textContent = compiler.isAgent ? '● Agent đã ghép nối' : '● Bridge sẵn sàng'; $('agent-message').textContent = 'Compiler đã kết nối và sẵn sàng.';
+    if (bridgeNotice && $('notice').textContent === bridgeNotice) $('notice').hidden = true;
+    bridgeNotice = '';
   }
-  catch (error) { token = ''; lastBuild = null; $('bridge-state').textContent = compiler.isAgent ? 'Agent chưa sẵn sàng' : 'Bridge chưa chạy'; $('agent-message').textContent = describeError(error); if (!startupError) notify(compiler.isAgent ? `Chưa thể build/nạp: ${describeError(error)} Trình soạn thảo vẫn hoạt động.` : 'Chạy Start-ESPStudio.cmd để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'); }
+  catch (error) { token = ''; lastBuild = null; $('bridge-state').textContent = compiler.isAgent ? 'Agent chưa sẵn sàng' : 'Bridge chưa chạy'; $('agent-message').textContent = describeError(error); if (!startupError) { bridgeNotice = compiler.isAgent ? `Chưa thể build/nạp: ${describeError(error)} Trình soạn thảo vẫn hoạt động.` : 'Chạy Start-ESPStudio.cmd để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'; notify(bridgeNotice); } }
   syncButtons();
 }
 type Job = { id: string; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; kind: string };
@@ -317,6 +335,7 @@ async function watchJob(job: Job) {
   } finally { activeJob = null; cancelButton.hidden = true; }
 }
 $('build').onclick = async () => {
+  if (compiler.isAgent && !compiler.supportedTargets.includes(project.config.board.target)) return notify('Agent đang kết nối chưa hỗ trợ chip này. Cài và mở bản Agent mới rồi kết nối lại.', true);
   if (project.mode === 'blocks') refreshCode();
   if (generationError || configPending || busy) return; busy = true; lastBuild = null; syncButtons(); const submitted = fingerprint();
   try {
@@ -334,7 +353,8 @@ $('ports').onchange = syncButtons;
 $('upload').onclick = async () => {
   const port = $<HTMLSelectElement>('ports').value;
   if (generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !port || busy) return;
-  if (!confirm(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`)) return;
+  if (!compiler.nativeUploadConsent && !confirm(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`)) return;
+  if (compiler.nativeUploadConsent) notify('Kiểm tra board/cổng và xác nhận nạp trên cửa sổ TT ESPStudio Agent.');
   busy = true; syncButtons();
   try { await disconnectSerial(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); notify(result.status === 'success' ? 'Nạp thành công. Hãy quan sát LED trên board thật để xác nhận hoạt động.' : 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.', result.status !== 'success'); }
   catch (error) { notify(describeError(error), true); }
