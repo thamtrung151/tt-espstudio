@@ -47,7 +47,7 @@ export function allocatePwm(config: { board: { target: keyof typeof targets }; d
 }
 export const configSchema = z.object({
   schemaVersion: z.literal(1),
-  board: z.object({ name: z.string().trim().min(1).max(80), target: z.enum(['esp32','esp32s3','esp32s2','esp32c3']), exposedPins: z.array(pin).max(256) }).strict(),
+  board: z.object({ name: z.string().trim().min(1).max(80), target: z.enum(['esp32','esp32s3','esp32s2','esp32c3']), exposedPins: z.array(pin).max(256), serialTransport: z.enum(['default','uart','usb-cdc']).optional(), uploadReset: z.enum(['auto','manual']).optional() }).strict(),
   devices: z.array(deviceSchema).max(32),
 }).strict().superRefine((config, ctx) => {
   const exposed = new Set<number>();
@@ -56,6 +56,7 @@ export const configSchema = z.object({
     if (exposed.has(p)) issue(['board','exposedPins',i], `GPIO${p}: bị lặp trong danh sách.`);
     exposed.add(p);
   });
+  if (config.board.target === 'esp32' && config.board.serialTransport === 'usb-cdc') issue(['board','serialTransport'], 'ESP32/WROOM không có USB native. Chọn UART qua chip USB–Serial.');
   const ids = new Set<string>();
   config.devices.forEach((d, i) => {
     if (ids.has(d.id)) issue(['devices',i,'id'], 'Tên thiết bị bị trùng.'); ids.add(d.id);
@@ -98,5 +99,13 @@ export function describeError(error: unknown): string {
 }
 export function platformioIni(config: Config): string {
   const valid = parseConfig(config);
-  return `[env:robot]\nplatform = espressif32@6.12.0\nboard = ${targets[valid.board.target].board}\nframework = arduino\nmonitor_speed = 115200\n`;
+  return `[env:robot]\nplatform = espressif32@6.12.0\nboard = ${targets[valid.board.target].board}\nframework = arduino\nmonitor_speed = 115200\n${serialBuildOptions(valid)}${valid.board.uploadReset === 'manual' ? 'board_upload.after_reset = no_reset\n' : ''}`;
+}
+
+function serialBuildOptions(config: Config): string {
+  const { target, serialTransport } = config.board;
+  if (!serialTransport || serialTransport === 'default') return '';
+  if (serialTransport === 'uart') return 'build_unflags = -DARDUINO_USB_CDC_ON_BOOT=1\nbuild_flags = -DARDUINO_USB_CDC_ON_BOOT=0\n';
+  const mode = target === 'esp32s2' ? 0 : 1;
+  return `build_unflags = -DARDUINO_USB_MODE=${mode === 0 ? 1 : 0} -DARDUINO_USB_CDC_ON_BOOT=0\nbuild_flags =\n  -DARDUINO_USB_CDC_ON_BOOT=1\n  -DARDUINO_USB_MODE=${mode}\n`;
 }

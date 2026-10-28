@@ -1,5 +1,33 @@
 import { test, expect } from '@playwright/test';
 import { roboticsConfig, roboticsWorkspace } from '../fixtures/robotics';
+import { readFile } from 'node:fs/promises';
+import { unzipSync, strFromU8 } from 'fflate';
+
+test('USB CDC and manual reset persist through GUI, reload and PlatformIO export', async ({ page }) => {
+  await page.goto('/'); await expect(page.locator('#code')).toHaveValue(/void loop/);
+  await page.locator('[data-view="config"]').click();
+  await page.locator('#config-target').selectOption('esp32s2');
+  await page.locator('#config-serial').selectOption('usb-cdc');
+  await page.locator('#config-upload-reset').selectOption('manual');
+  await page.getByRole('button', { name: 'Áp dụng cấu hình GUI' }).click();
+  await expect(page.locator('#config-errors')).toHaveText('');
+  let config = JSON.parse(await page.locator('#config-json').inputValue());
+  expect(config.board.serialTransport).toBe('usb-cdc'); expect(config.board.uploadReset).toBe('manual');
+  await page.reload(); await page.locator('[data-view="config"]').click();
+  await expect(page.locator('#config-serial')).toHaveValue('usb-cdc');
+  await expect(page.locator('#config-upload-reset')).toHaveValue('manual');
+  await page.locator('[data-view="program"]').click();
+  const downloaded = page.waitForEvent('download'); await page.locator('#export-source').click();
+  const files = unzipSync(await readFile((await (await downloaded).path())!));
+  const ini = strFromU8(files['platformio.ini']);
+  expect(ini).toContain('ARDUINO_USB_CDC_ON_BOOT=1'); expect(ini).toContain('board_upload.after_reset = no_reset');
+  await page.locator('[data-view="config"]').click();
+  // JSON edits also repopulate GUI, without silently carrying a previous USB choice.
+  config.board.serialTransport = 'uart'; delete config.board.uploadReset;
+  await page.locator('#config-json').fill(JSON.stringify(config)); await page.locator('#apply-json').click();
+  await expect(page.locator('#config-serial')).toHaveValue('uart');
+  await expect(page.locator('#config-upload-reset')).toHaveValue('auto');
+});
 test('owner-selected S3 GPIOs apply through GUI and JSON without a whitelist', async ({ page }) => {
   await page.goto('/'); await expect(page.locator('#code')).toHaveValue(/void loop/);
   await page.locator('[data-view="config"]').click(); await page.locator('#config-pins').fill('33, 34, 43');

@@ -14,6 +14,7 @@ internal sealed class AgentTray : ApplicationContext {
     private readonly object logLock = new object();
     private readonly Control dispatcher = new Control();
     private bool closing;
+    private ToolStripMenuItem statusItem;
 
     [STAThread]
     private static void Main(string[] args) {
@@ -38,6 +39,8 @@ internal sealed class AgentTray : ApplicationContext {
         logFile = Path.Combine(data, "agent.log");
         dispatcher.CreateControl();
         var menu = new ContextMenuStrip();
+        statusItem = new ToolStripMenuItem("Đang khởi động compiler…") { Enabled = false };
+        menu.Items.Add(statusItem);
         menu.Items.Add("Mở ESPStudio", null, (s, e) => OpenWebsite());
         menu.Items.Add("Xem log", null, (s, e) => Process.Start(new ProcessStartInfo("notepad.exe", "\"" + logFile + "\"") { UseShellExecute = false }));
         menu.Items.Add("Thoát Agent", null, (s, e) => RequestExit());
@@ -56,8 +59,14 @@ internal sealed class AgentTray : ApplicationContext {
         agent = new Process { StartInfo = start, EnableRaisingEvents = true };
         agent.OutputDataReceived += Output; agent.ErrorDataReceived += Output;
         agent.Exited += (s, e) => dispatcher.BeginInvoke((Action)(() => {
-            if (!closing) MessageBox.Show("Agent đã dừng. Xem log để kiểm tra runtime hoặc cổng 3217 đang bận.", "TT ESPStudio Agent");
-            icon.Visible = false; ExitThread();
+            icon.Visible = false;
+            if (!closing) {
+                var message = agent.ExitCode == 98
+                    ? "Cổng 3217 đang được một tiến trình khác sử dụng. Nếu website vẫn ghép nối/build được thì Agent cũ vẫn đang chạy. Đóng Agent cũ trước khi mở bản mới; xem log để kiểm tra."
+                    : "Compiler đã thoát ngoài dự kiến. Xem log Agent hoặc mở lại ứng dụng.";
+                MessageBox.Show(message, "TT ESPStudio Agent", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            ExitThread();
         }));
         agent.Start(); agent.BeginOutputReadLine(); agent.BeginErrorReadLine();
         if (openWeb) OpenWebsite();
@@ -70,15 +79,19 @@ internal sealed class AgentTray : ApplicationContext {
                 File.AppendAllText(logFile, e.Data + Environment.NewLine, System.Text.Encoding.UTF8);
             }
         } catch (IOException) { /* disk full does not stop a firmware operation */ }
+        if (e.Data == "ESPSTUDIO_READY") dispatcher.BeginInvoke((Action)(() => {
+            icon.Text = "TT ESPStudio Agent · Sẵn sàng";
+            statusItem.Text = "Compiler sẵn sàng";
+        }));
         if (e.Data == "ESPSTUDIO_SHUTDOWN_BUSY") dispatcher.BeginInvoke((Action)(() => {
-            closing = false;
+            closing = false; statusItem.Text = "Đang có tác vụ — chưa thoát";
             MessageBox.Show("Đang build/nạp hoặc chờ xác nhận nạp. Hãy hoàn tất tác vụ trước khi thoát.", "TT ESPStudio Agent");
         }));
     }
     private void RequestExit() {
         if (closing) return;
         if (agent.HasExited) { ExitThread(); return; }
-        closing = true;
+        closing = true; statusItem.Text = "Đang thoát…";
         try { agent.StandardInput.WriteLine("shutdown"); agent.StandardInput.Flush(); }
         catch (IOException) { closing = false; }
     }

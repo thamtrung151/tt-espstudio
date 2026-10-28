@@ -162,6 +162,12 @@ describe('real loopback agent HTTP API', () => {
     expect(agent.service.jobs.size).toBe(0);
     expect((await call('upload', { buildId: '00000000-0000-4000-8000-000000000000', port: 'COM6' }, session.token)).status).toBe(404);
     expect((await call('jobs/00000000-0000-4000-8000-000000000000', undefined, session.token)).status).toBe(404);
+    agent.drain();
+    expect((await (await call('health')).json()).lifecycle).toBe('stopping');
+    expect((await call('build', {}, session.token)).status).toBe(503);
+    expect((await call('upload', { buildId: '00000000-0000-4000-8000-000000000000', port: 'COM6' }, session.token)).status).toBe(503);
+    expect((await call('pair/request', {})).status).toBe(503);
+    expect((await call('session', undefined, session.token)).status).toBe(200);
     expect((await call('unpair', {}, session.token)).status).toBe(200);
     expect((await call('session', undefined, session.token)).status).toBe(401);
   });

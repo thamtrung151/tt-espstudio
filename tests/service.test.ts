@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BuildService, buildRequest } from '../server/service';
+import { BuildService, buildRequest, uploadDiagnostic } from '../server/service';
 import { template } from '../src/core/config';
 describe('local build boundary', () => {
+  it('does not treat writing 100% or an earlier verified segment as a successful flash', () => {
+    const error = "Cannot configure port: A device which does not exist was specified";
+    expect(uploadDiagnostic('Writing at 0x10000 (100 %)\n' + error)).toContain('chưa xác nhận nạp hoàn tất');
+    expect(uploadDiagnostic('Hash of data verified.\nWriting at 0x10000 (91 %)\n' + error)).toContain('chưa xác nhận nạp hoàn tất');
+    expect(uploadDiagnostic('Hash of data verified.\nLeaving...\nHard resetting via RTS pin...\n' + error)).toContain('bước kết thúc/reset');
+    expect(uploadDiagnostic('Compilation failed')).toBeUndefined();
+  });
   it('rejects request-controlled command arguments and empty programs', () => {
     expect(() => buildRequest.parse({ config: template(), code: 'x', command: 'bad' })).toThrow();
     expect(() => buildRequest.parse({ config: template(), code: '' })).toThrow();

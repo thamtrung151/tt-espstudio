@@ -1,5 +1,5 @@
 export const COMPILER_API_VERSION = 1;
-export type CompilerSession = { apiVersion?: number; version: string; token?: string; targets?: string[]; setup?: 'ready' | 'required'; capabilities?: { nativePairing?: boolean; nativeUploadConsent?: boolean } };
+export type CompilerSession = { apiVersion?: number; version: string; token?: string; targets?: string[]; setup?: 'ready' | 'required'; lifecycle?: 'running' | 'stopping'; capabilities?: { nativePairing?: boolean; nativeUploadConsent?: boolean; usbConfiguration?: boolean } };
 export type PairingRequest = { requestId: string; claimSecret?: string; expiresAt?: number };
 export interface CompilerService {
   readonly isAgent: boolean;
@@ -10,6 +10,7 @@ export interface CompilerService {
   finishNativePairing(request: PairingRequest): Promise<void>;
   nativeUploadConsent: boolean;
   supportedTargets: string[];
+  usbConfiguration: boolean;
   pair(requestId: string, code: string): Promise<void>;
   disconnect(): Promise<void>;
 }
@@ -17,6 +18,7 @@ export class HttpCompilerService implements CompilerService {
   token = '';
   nativeUploadConsent = false;
   supportedTargets = ['esp32', 'esp32s3'];
+  usbConfiguration = false;
   constructor(readonly isAgent: boolean) {
     if (isAgent) { try { this.token = sessionStorage.getItem('tt-espstudio.agent-session.v1') ?? ''; } catch { /* memory-only session */ } }
   }
@@ -41,6 +43,8 @@ export class HttpCompilerService implements CompilerService {
     if (this.isAgent) {
       const health = await this.request<CompilerSession>('health');
       if (health.apiVersion !== COMPILER_API_VERSION) throw new Error('Web và Agent không tương thích. Cần cập nhật Agent.');
+      if (health.lifecycle === 'stopping') throw new Error('Agent đang hoàn tất tác vụ để thoát. Hãy mở lại khi tác vụ kết thúc.');
+      this.usbConfiguration = health.capabilities?.usbConfiguration === true;
       this.nativeUploadConsent = health.capabilities?.nativeUploadConsent === true;
       this.supportedTargets = health.targets ?? ['esp32', 'esp32s3'];
       if (!this.token) throw new Error(health.capabilities?.nativePairing ? 'Agent đã chạy. Bấm Yêu cầu ghép nối rồi xác nhận trên cửa sổ Agent.' : 'Agent đã chạy. Hãy ghép nối website bằng mã hiển thị trên Agent.');

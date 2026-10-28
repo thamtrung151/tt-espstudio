@@ -13,7 +13,7 @@ export function findPio() {
   const bundled = path.join(homedir(), '.platformio', 'penv', process.platform === 'win32' ? 'Scripts/pio.exe' : 'bin/pio');
   return existsSync(bundled) ? bundled : 'pio';
 }
-export type Job = { id: string; kind: 'build' | 'upload'; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; directory: string; target: string; exitCode: number | null };
+export type Job = { diagnostic?: string; id: string; kind: 'build' | 'upload'; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; directory: string; target: string; exitCode: number | null };
 export const buildRequest = z.object({ config: z.unknown(), code: z.string().min(1).max(200000) }).strict();
 export function runProcess(args: string[], cwd: string, onData: (chunk: string) => void, timeoutMs = 300000, signal?: AbortSignal): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -78,6 +78,7 @@ export class BuildService {
       job.exitCode = await runProcess(args, job.directory, chunk => { job.log = (job.log + chunk).slice(-160000); }, 300000, controller.signal);
       const artifactExists = job.kind !== 'build' || existsSync(path.join(job.directory, '.pio', 'build', 'robot', 'firmware.bin'));
       job.status = controller.signal.aborted ? 'cancelled' : job.exitCode === 0 && artifactExists ? 'success' : 'error';
+      if (job.kind === 'upload' && job.status === 'error') job.diagnostic = uploadDiagnostic(job.log);
       if (job.exitCode === 0 && !artifactExists) job.log += '\nKhông tìm thấy firmware.bin sau build.';
     }
     catch (error) { job.status = 'error'; job.log += `\n${String(error)}\nKiểm tra PlatformIO Core hoặc biến ESPSTUDIO_PIO.`; }
@@ -88,4 +89,11 @@ export class BuildService {
     if (!job || job.kind !== 'build' || job.status !== 'running') throw new Error('Chỉ hủy tác vụ biên dịch đang chạy; không ngắt nạp firmware.');
     this.controllers.get(id)?.abort(); job.log += '\nĐã yêu cầu hủy biên dịch.\n';
   }
+}
+
+export function uploadDiagnostic(log: string): string | undefined {
+  if (!/Cannot configure port|device which does not exist|SerialException/i.test(log)) return;
+  if (/Hash of data verified\.[\s\S]*?(?:Leaving\.\.\.|Hard resetting)[\s\S]*?(?:Cannot configure port|device which does not exist|SerialException)/i.test(log))
+    return 'Toolchain đã báo xác minh dữ liệu trước khi mất cổng ở bước kết thúc/reset. Chưa xác nhận toàn bộ lượt nạp thành công. Kiểm tra chương trình trên board, nhấn RST rồi quét lại cổng. Với USB native, bật CDC trong Configuration; nếu lỗi reset lặp lại, chọn tự nhấn RST sau nạp.';
+  return 'Mất cổng USB/Serial; chưa xác nhận nạp hoàn tất. Với USB native, kiểm tra CDC trong Configuration, đưa board về BOOT + RST rồi quét/chọn đúng cổng trước khi thử lại. Writing 100% riêng lẻ chưa đủ để xác nhận thành công.';
 }

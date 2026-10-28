@@ -45,7 +45,7 @@ document.querySelector('#app')!.innerHTML = `
       <section id="config-view" class="view" hidden>
         <div class="section-intro"><div><h2>Phần cứng được mô tả bằng dữ liệu</h2><p>Gán thiết bị và chân GPIO. GUI và JSON sử dụng cùng một cấu hình.</p></div><button id="export-config">↧ Xuất config</button><button id="import-config">↥ Nhập config</button></div>
         <p id="config-lock" class="info" hidden>Cấu hình đang khóa để giữ đúng bản C++ tự do. Hãy lưu C++ và quay về Blockly trước khi đổi cấu hình.</p>
-        <div class="config-grid"><form id="config-form" class="card"><div class="card-heading"><h3>01 / Board profile</h3><button id="new-board" type="button" class="quiet">Tạo board trống</button></div><label>Tên board<input id="config-name" required maxlength="80"></label><label>Chip / build target<select id="config-target"><option value="esp32">ESP32 DevKit / WROOM</option><option value="esp32s3">ESP32-S3 / board tùy biến</option></select></label><label>GPIO trên board — danh sách của bạn (phân cách bằng dấu phẩy)<input id="config-pins" required></label><p class="muted">Tự khai báo chân theo sơ đồ board; không có whitelist khóa GPIO. Có thể nhập chân ngoài danh sách gợi ý. Thông tin boot, flash, USB, ADC… chỉ để tham khảo.</p><div class="card-heading"><h3>02 / Thiết bị</h3><div class="add-device-controls"><select id="driver-select" aria-label="Loại thiết bị mới"><option value="gpio.output">GPIO output</option><option value="gpio.input">GPIO input</option><option value="adc.input">ADC input</option><option value="pwm.output">PWM output</option><option value="servo.pwm">Servo PWM</option><option value="motor.hbridge2">Motor 2 PWM · IN1 / IN2</option></select><button id="add-device" type="button" class="quiet">+ Thêm thiết bị</button></div></div><datalist id="gpio-options"></datalist><div id="device-list"></div><button class="primary" type="submit">Áp dụng cấu hình GUI</button></form>
+        <div class="config-grid"><form id="config-form" class="card"><div class="card-heading"><h3>01 / Board profile</h3><button id="new-board" type="button" class="quiet">Tạo board trống</button></div><label>Tên board<input id="config-name" required maxlength="80"></label><label>Chip / build target<select id="config-target"><option value="esp32">ESP32 DevKit / WROOM</option><option value="esp32s3">ESP32-S3 / board tùy biến</option></select></label><label>Kết nối Serial với máy tính<select id="config-serial"><option value="default">Mặc định của board profile</option><option value="uart">UART qua chip USB–Serial (CP210x / CH340…)</option><option value="usb-cdc">USB native · bật CDC khi khởi động</option></select></label><p id="usb-help" class="muted"></p><label>Sau khi nạp firmware<select id="config-upload-reset"><option value="auto">Tự khởi động lại</option><option value="manual">Tôi nhấn RST — nếu USB lỗi khi tự reset</option></select></label><label>GPIO trên board — danh sách của bạn (phân cách bằng dấu phẩy)<input id="config-pins" required></label><p class="muted">Tự khai báo chân theo sơ đồ board; không có whitelist khóa GPIO. Có thể nhập chân ngoài danh sách gợi ý. Thông tin boot, flash, USB, ADC… chỉ để tham khảo.</p><div class="card-heading"><h3>02 / Thiết bị</h3><div class="add-device-controls"><select id="driver-select" aria-label="Loại thiết bị mới"><option value="gpio.output">GPIO output</option><option value="gpio.input">GPIO input</option><option value="adc.input">ADC input</option><option value="pwm.output">PWM output</option><option value="servo.pwm">Servo PWM</option><option value="motor.hbridge2">Motor 2 PWM · IN1 / IN2</option></select><button id="add-device" type="button" class="quiet">+ Thêm thiết bị</button></div></div><datalist id="gpio-options"></datalist><div id="device-list"></div><button class="primary" type="submit">Áp dụng cấu hình GUI</button></form>
         <div class="card"><div class="card-heading"><h3>config.json</h3><span class="subtle-label">SCHEMA v1</span></div><textarea id="config-json" aria-label="Cấu hình JSON" spellcheck="false"></textarea><button id="apply-json" class="primary">Áp dụng JSON</button><p class="muted">Chỉnh sửa chỉ có hiệu lực sau khi áp dụng. Khi có lỗi, cấu hình đang dùng được giữ nguyên.</p><pre id="config-errors" role="alert"></pre><pre id="config-warnings" class="pin-notes"></pre><div id="pwm-resources" class="muted"></div></div></div>
       </section>
       <section id="device-view" class="view" hidden>
@@ -70,6 +70,7 @@ $('device-view').prepend(agentPanel);
 $('agent-help').textContent = 'Mở Agent trên máy, bấm Yêu cầu ghép nối và làm theo hướng dẫn xác nhận. Cho phép trình duyệt kết nối tới Agent nếu được hỏi.';
 agentPanel.querySelector('p')!.textContent = 'ESPStudio Agent giúp biên dịch và nạp chương trình từ website lên board của bạn. Cài Agent và mở ứng dụng trước khi kết nối.';
 const launchAgent = document.createElement('a'); launchAgent.href = 'ttespstudio://connect'; launchAgent.textContent = 'Mở Agent đã cài'; launchAgent.className = 'quiet';
+launchAgent.onclick = () => { $('agent-message').textContent = 'Đang mở Agent. Khi biểu tượng Agent xuất hiện ở khay hệ thống, bấm Yêu cầu ghép nối nếu phiên cũ đã hết.'; window.setTimeout(() => { if (!busy) void connectBridge(); }, 2000); };
 launchAgent.title = 'Dành cho bộ cài có đăng ký liên kết TT ESPStudio. Bản Agent Dev vẫn mở bằng launcher .cmd.';
 $('agent-help').after(launchAgent);
 const cancelButton = document.createElement('button'); cancelButton.id = 'cancel-build'; cancelButton.textContent = 'Hủy biên dịch'; cancelButton.hidden = true;
@@ -261,6 +262,9 @@ function renderConfig() {
   configPending = false; draftStatus.hidden = true;
   const config = project.config;
   $<HTMLInputElement>('config-name').value = config.board.name; $<HTMLSelectElement>('config-target').value = config.board.target;
+  $<HTMLSelectElement>('config-serial').value = config.board.serialTransport ?? 'default';
+  $<HTMLSelectElement>('config-upload-reset').value = config.board.uploadReset ?? 'auto';
+  updateUsbHelp();
   $<HTMLInputElement>('config-pins').value = config.board.exposedPins.join(', ');
   $<HTMLTextAreaElement>('config-json').value = JSON.stringify(config, null, 2); $('config-errors').textContent = '';
   $('device-list').replaceChildren(); config.devices.forEach(d => $('device-list').append(createDeviceRow(d.driver, d.id, d)));
@@ -275,7 +279,12 @@ $('add-device').onclick = () => {
   $('device-list').append(createDeviceRow(driver, `device_${n}`));
   markConfigPending();
 };
-$<HTMLSelectElement>('config-target').onchange = () => { notify('Đã đổi target trong bản nháp. Danh sách GPIO của bạn được giữ nguyên; áp dụng cấu hình khi sẵn sàng.'); };
+$<HTMLSelectElement>('config-target').onchange = () => { updateUsbHelp(); notify('Đã đổi target trong bản nháp. Danh sách GPIO của bạn được giữ nguyên; áp dụng cấu hình khi sẵn sàng.'); };
+function updateUsbHelp() {
+  const target = $<HTMLSelectElement>('config-target').value;
+  $('usb-help').textContent = target === 'esp32' ? 'ESP32/WROOM dùng chip USB–Serial ngoài; không có USB native.' : 'Cắm vào USB trực tiếp của chip: chọn USB native để Serial hoạt động sau nạp. Lần đầu có thể cần giữ BOOT, nhấn rồi thả RST, sau đó thả BOOT. Sau nạp, nếu cần hãy nhấn RST và chọn lại cổng COM mới. Cổng qua CH340/CP210x dùng UART.';
+}
+$<HTMLSelectElement>('config-serial').onchange = updateUsbHelp;
 function applyConfig(config: Config) {
   if (project.mode === 'code') throw new Error('Hãy quay về Blockly trước khi đổi cấu hình.');
   for (const block of workspace.getAllBlocks(false)) {
@@ -287,7 +296,7 @@ function applyConfig(config: Config) {
 $<HTMLFormElement>('config-form').onsubmit = event => {
   event.preventDefault();
   try {
-    const config = { schemaVersion: 1, board: { name: $<HTMLInputElement>('config-name').value, target: $<HTMLSelectElement>('config-target').value, exposedPins: ($<HTMLInputElement>('config-pins').value.trim() ? $<HTMLInputElement>('config-pins').value.split(',').map(v => v.trim() ? Number(v.trim()) : NaN) : []) }, devices: [...document.querySelectorAll<HTMLElement>('.device-row')].map(readDeviceRow) };
+    const config = { schemaVersion: 1, board: { name: $<HTMLInputElement>('config-name').value, target: $<HTMLSelectElement>('config-target').value, ...($<HTMLSelectElement>('config-serial').value !== 'default' ? { serialTransport: $<HTMLSelectElement>('config-serial').value } : {}), ...($<HTMLSelectElement>('config-upload-reset').value === 'manual' ? { uploadReset: 'manual' } : {}), exposedPins: ($<HTMLInputElement>('config-pins').value.trim() ? $<HTMLInputElement>('config-pins').value.split(',').map(v => v.trim() ? Number(v.trim()) : NaN) : []) }, devices: [...document.querySelectorAll<HTMLElement>('.device-row')].map(readDeviceRow) };
     applyConfig(parseConfig(config));
   } catch (error) { $('config-errors').textContent = describeError(error); notify('Cấu hình chưa được áp dụng. Xem vị trí lỗi bên dưới.', true); }
 };
@@ -322,7 +331,7 @@ async function connectBridge() {
   catch (error) { token = ''; lastBuild = null; $('bridge-state').textContent = compiler.isAgent ? 'Agent chưa sẵn sàng' : 'Bridge chưa chạy'; $('agent-message').textContent = describeError(error); if (!startupError) { bridgeNotice = compiler.isAgent ? `Chưa thể build/nạp: ${describeError(error)} Trình soạn thảo vẫn hoạt động.` : 'Chạy Start-ESPStudio.cmd để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'; notify(bridgeNotice); } }
   syncButtons();
 }
-type Job = { id: string; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; kind: string };
+type Job = { diagnostic?: string; id: string; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; kind: string };
 async function watchJob(job: Job) {
   activeJob = job.id; cancelButton.hidden = !compiler.isAgent || job.kind !== 'build';
   try {
@@ -335,6 +344,7 @@ async function watchJob(job: Job) {
   } finally { activeJob = null; cancelButton.hidden = true; }
 }
 $('build').onclick = async () => {
+  if (compiler.isAgent && !compiler.usbConfiguration && (project.config.board.serialTransport || project.config.board.uploadReset)) return notify('Cấu hình USB/reset cần Agent preview.4 trở lên. Cài và mở bản mới rồi ghép nối lại.', true);
   if (compiler.isAgent && !compiler.supportedTargets.includes(project.config.board.target)) return notify('Agent đang kết nối chưa hỗ trợ chip này. Cài và mở bản Agent mới rồi kết nối lại.', true);
   if (project.mode === 'blocks') refreshCode();
   if (generationError || configPending || busy) return; busy = true; lastBuild = null; syncButtons(); const submitted = fingerprint();
@@ -356,7 +366,7 @@ $('upload').onclick = async () => {
   if (!compiler.nativeUploadConsent && !confirm(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`)) return;
   if (compiler.nativeUploadConsent) notify('Kiểm tra board/cổng và xác nhận nạp trên cửa sổ TT ESPStudio Agent.');
   busy = true; syncButtons();
-  try { await disconnectSerial(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); notify(result.status === 'success' ? 'Nạp thành công. Hãy quan sát LED trên board thật để xác nhận hoạt động.' : 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.', result.status !== 'success'); }
+  try { await disconnectSerial(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); const message = result.status === 'success' ? (project.config.board.uploadReset === 'manual' ? 'Đã nạp firmware. Nhấn RST để chạy chương trình, rồi quét/chọn lại cổng nếu COM thay đổi.' : 'Nạp thành công. Kiểm tra chương trình trên board; nếu USB đổi cổng, quét/chọn lại COM để dùng Serial.') : result.diagnostic ?? 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.'; $('build-state').textContent = message; notify(message, result.status !== 'success'); }
   catch (error) { notify(describeError(error), true); }
   finally { busy = false; syncButtons(); }
 };

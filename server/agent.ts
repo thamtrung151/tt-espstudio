@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { createInterface } from 'node:readline';
+import { attachParentLifecycle } from './parent-lifecycle';
 import { z } from 'zod';
 import { AgentAuth, AGENT_API_VERSION, AGENT_VERSION } from './agent-auth';
 import { BuildService, listPorts, runProcess, type Job } from './service';
@@ -30,7 +30,8 @@ export function createAgent(options: { port: number; root: string; origins: Set<
   let portsTask: ReturnType<typeof listPorts> | undefined;
   let portsExpire = 0;
   let awaitingUploadConsent = false;
-  const publicJob = (job: Job) => ({ id: job.id, kind: job.kind, status: job.status, log: job.log.split(options.root).join('[Agent data]'), target: job.target, exitCode: job.exitCode });
+  let draining = false;
+  const publicJob = (job: Job) => ({ id: job.id, kind: job.kind, status: job.status, log: job.log.split(options.root).join('[Agent data]'), target: job.target, exitCode: job.exitCode, diagnostic: job.diagnostic });
   const server = createServer(async (req, res) => {
     const send = (status: number, data: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
     if (req.headers.host !== `127.0.0.1:${options.port}`) return send(403, { error: 'Host không được phép.' });
@@ -46,7 +47,8 @@ export function createAgent(options: { port: number; root: string; origins: Set<
     }
     const route = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
     try {
-      if (route === '/api/health' && req.method === 'GET') return send(200, { apiVersion: AGENT_API_VERSION, version: AGENT_VERSION, targets: Object.keys(targets), setup: options.ready() ? 'ready' : 'required', busy: service.busy || awaitingUploadConsent, capabilities: { nativePairing: !!options.consent, nativeUploadConsent: !!options.consent } });
+      if (route === '/api/health' && req.method === 'GET') return send(200, { apiVersion: AGENT_API_VERSION, version: AGENT_VERSION, targets: Object.keys(targets), setup: options.ready() ? 'ready' : 'required', busy: service.busy || awaitingUploadConsent, lifecycle: draining ? 'stopping' : 'running', capabilities: { usbConfiguration: true, nativePairing: !!options.consent, nativeUploadConsent: !!options.consent } });
+      if (draining && req.method === 'POST' && !['/api/cancel','/api/unpair','/api/pair/cancel'].includes(route)) return send(503, { error: 'Agent đang kết thúc tác vụ để thoát. Mở lại Agent sau khi tác vụ hoàn tất.' });
       if (route === '/api/pair/native' && req.method === 'POST') {
         z.object({}).strict().parse(await json(req));
         if (!options.consent) return send(404, { error: 'Agent này dùng mã ghép nối.' });
@@ -106,6 +108,7 @@ export function createAgent(options: { port: number; root: string; origins: Set<
         awaitingUploadConsent = true;
         try {
           if (options.consent && !await options.consent({ kind: 'upload', origin, port, target: build.target, buildId })) return send(403, { error: 'Đã từ chối hoặc hết thời gian xác nhận nạp trên Agent.' });
+          if (draining) return send(503, { error: 'Agent đang thoát; chưa bắt đầu nạp.' });
           if (!auth.valid(origin, token)) return send(401, { error: 'Phiên đã hết hạn hoặc bị ngắt trong lúc chờ xác nhận.' });
           // A disconnected caller must not start a delayed flash after the dialog.
           if (res.destroyed) return;
@@ -116,7 +119,7 @@ export function createAgent(options: { port: number; root: string; origins: Set<
     } catch (error) { send(400, { error: describeError(error) }); }
   });
   server.requestTimeout = 15000; server.headersTimeout = 10000;
-  return { server, service, isBusy: () => service.busy || awaitingUploadConsent };
+  return { server, service, drain: () => { draining = true; }, isBusy: () => service.busy || awaitingUploadConsent };
 }
 
 export async function startAgent() {
@@ -138,22 +141,30 @@ export async function startAgent() {
   } });
   agent.server.on('error', error => {
     console.error('Không mở được Agent (có thể cổng đang bận):', error.message);
-    process.exitCode = 1;
+    const exitCode = (error as NodeJS.ErrnoException).code === 'EADDRINUSE' ? 98 : 1;
+    process.exitCode = exitCode;
     // A packaged parent pipe otherwise keeps an unusable Agent alive indefinitely.
-    if (process.env.ESPSTUDIO_AGENT_PARENT_PIPE === '1') process.exit(1);
+    if (process.env.ESPSTUDIO_AGENT_PARENT_PIPE === '1') process.exit(exitCode);
   });
-  agent.server.listen(port, '127.0.0.1', () => console.log(`TT ESPStudio Agent ${AGENT_VERSION} · API v1 · http://127.0.0.1:${port}\nWebsites: ${[...origins].join(', ')}\nCtrl+C để thoát. Chế độ preview, chưa phải bộ cài người dùng cuối.`));
+  agent.server.listen(port, '127.0.0.1', () => console.log(`TT ESPStudio Agent ${AGENT_VERSION} · API v1 · http://127.0.0.1:${port}\nWebsites: ${[...origins].join(', ')}\nBản preview. Dùng menu khay hệ thống để thoát Agent đã cài; Ctrl+C cho bản phát triển.`));
   // Private parent pipe only; no remote endpoint can stop the Agent or a flash.
   if (process.env.ESPSTUDIO_AGENT_PARENT_PIPE === '1' && process.env.ESPSTUDIO_AGENT_RUNTIME) {
-    const input = createInterface({ input: process.stdin });
-    input.on('line', line => {
-      if (line !== 'shutdown') return;
-      if (agent.isBusy()) { console.log('ESPSTUDIO_SHUTDOWN_BUSY'); return; }
-      agent.server.close(() => { input.close(); process.exit(0); });
-      agent.server.closeIdleConnections();
+    // A killed tray closes stdin. Finish an active flash, reject new work, then exit.
+    // Its stdout pipe may also close; EPIPE must not interrupt that flash.
+    for (const stream of [process.stdout, process.stderr]) stream.on('error', error => {
+      if ((error as NodeJS.ErrnoException).code !== 'EPIPE') throw error;
+    });
+    attachParentLifecycle(process.stdin, {
+      isBusy: agent.isBusy, drain: agent.drain,
+      reportBusy: () => console.log('ESPSTUDIO_SHUTDOWN_BUSY'),
+      stop: () => {
+        agent.server.close(() => process.exit(0));
+        agent.server.closeIdleConnections();
+      },
     });
   }
   try { ready = await runProcess(['--version'], root, () => {}, 15000) === 0; } catch { ready = false; }
+  if (ready) console.log('ESPSTUDIO_READY');
   console.log(ready ? 'PlatformIO sẵn sàng; gói target sẽ được kiểm tra khi build.' : 'Setup required: chưa tìm thấy PlatformIO trong môi trường Agent.');
   return agent;
 }
