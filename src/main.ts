@@ -1,5 +1,8 @@
-import './style.css';
-import './robotics.css';
+import './ui/ide.css';
+import { shell } from './ui/shell';
+import { initIde } from './ui/ide';
+import { SerialMonitor } from './ui/serial';
+import { t, initLocale } from './ui/i18n';
 import { compiler } from './compiler';
 import { zipSync, strToU8 } from 'fflate';
 import { Blockly, initialWorkspace, toolbox, readProgram, setDevices, validateWorkspace, deviceBlocks } from './blocks';
@@ -18,48 +21,9 @@ try {
   if (raw) { damagedSave = raw; const candidate = projectSchema.parse(JSON.parse(raw)); validateWorkspace(candidate.workspace, candidate.config); project = candidate; damagedSave = ''; }
 } catch (error) { startupError = `Không thể phục hồi bản lưu. Bản gốc được giữ lại; hãy tải bản cứu hộ trước khi lưu tiếp. ${describeError(error)}`; storageLocked = true; }
 setDevices(project.config.devices);
-document.querySelector('#app')!.innerHTML = `
-  <aside class="sidebar">
-    <a class="brand" href="#" aria-label="TT ESPStudio"><span class="brand-mark">tt<span>↗</span></span><span>ESPStudio<small>ROBOTICS · STEAM</small></span></a>
-    <div class="workspace-label">KHÔNG GIAN LÀM VIỆC</div>
-    <nav aria-label="Điều hướng chính">
-      <button class="nav active" data-view="program"><span>⌘</span> Lập trình <kbd>01</kbd></button>
-      <button class="nav" data-view="config"><span>⚙</span> Configuration <kbd>02</kbd></button>
-      <button class="nav" data-view="device"><span>⇄</span> Thiết bị <kbd>03</kbd></button>
-      <button class="nav" data-view="guide"><span>◈</span> Hướng dẫn <kbd>04</kbd></button>
-    </nav>
-    <div class="sidebar-note"><span class="eyebrow">TỪ Ý TƯỞNG ĐẾN CHUYỂN ĐỘNG</span><p>Board của bạn.<br>Chương trình của bạn.</p><div class="mini-circuit">○ ━━━ ▣ ━━━ ○<br>└ ──────── ┘</div></div>
-    <div class="sidebar-bottom"><span class="dot"></span> Workspace <span>v0.3 preview</span></div>
-  </aside>
-  <div class="shell">
-    <header><div class="breadcrumb">Workspace <span>/</span> <input id="project-name" aria-label="Tên project" maxlength="80"></div><div class="header-actions"><span id="save-state">Lưu trên máy</span><button id="import-project" class="quiet">↥ Nhập project</button><button id="export-project" class="quiet">↧ Lưu project</button></div></header>
-    <main>
-      <section class="page-heading"><div><div class="eyebrow">BUILD SOMETHING THAT MOVES</div><h1 id="page-title">Một ý tưởng. Một chương trình.</h1><p id="page-description">Kéo block, hiểu C++, và đưa ý tưởng lên board của bạn.</p></div><span class="phase-badge">GPIO · ADC · PWM · ROBOTICS</span></section>
-      <div id="notice" role="status" aria-live="polite" hidden></div>
-      <div class="board-bar"><div class="board-chip">▦</div><div><strong id="board-name"></strong><span id="board-subtitle"></span></div><button class="text-button" id="edit-board">Cấu hình board ↗</button><div class="board-right"><span id="bridge-state" class="status-pill">Bridge: đang kiểm tra…</span><button id="build" class="primary">▷ Biên dịch</button></div></div>
-      <section id="program-view" class="view">
-        <div class="example-bar"><label for="example-select">Bắt đầu với</label><select id="example-select"><option value="empty">Board trống — chưa gán thiết bị</option><option value="doit-led">DOIT · LED onboard GPIO2</option><option value="input-adc">DOIT · Nút nhấn + ADC</option></select><button id="open-example">Mở ví dụ / project mới</button></div><div class="editor-toolbar"><div class="segmented"><button id="blocks-mode">Blockly</button><button id="code-mode">C++ tự do</button></div><span id="mode-note"></span><button id="history" class="quiet">Lịch sử C++ <span id="history-count">0</span></button><button id="export-source" class="quiet">↧ Xuất PlatformIO</button></div>
-        <div class="editors"><section class="block-pane"><div class="pane-title"><strong>Chương trình trực quan</strong><span>Kéo thả để bắt đầu</span></div><div id="blockly"></div><div id="block-lock" hidden><strong>Đang chỉnh sửa C++</strong><p>Snapshot Blockly được giữ lại.<br>Quay về Blockly sẽ lưu bản C++ vào lịch sử.</p><button id="restore-blocks">Lưu C++ & quay về Blockly</button></div></section><section class="code-pane"><div class="pane-title"><strong><span class="file-dot"></span> main.cpp</strong><span id="code-badge">SINH TỪ BLOCKLY</span></div><div class="code-wrap"><textarea id="code" aria-label="Mã nguồn C++" spellcheck="false" wrap="off"></textarea></div><div class="code-footer"><span id="code-selection">Chọn block để xem đoạn C++ tương ứng</span><span>Arduino C++ · UTF-8</span></div></section></div>
-        <div class="editor-footnote"><span><span class="dot"></span> Blockly → C++ · Đồng bộ một chiều</span><span>Chân lấy từ Configuration · Driver mới cần thử phần cứng</span></div>
-      </section>
-      <section id="config-view" class="view" hidden>
-        <div class="section-intro"><div><h2>Phần cứng được mô tả bằng dữ liệu</h2><p>Gán thiết bị và chân GPIO. GUI và JSON sử dụng cùng một cấu hình.</p></div><button id="export-config">↧ Xuất config</button><button id="import-config">↥ Nhập config</button></div>
-        <p id="config-lock" class="info" hidden>Cấu hình đang khóa để giữ đúng bản C++ tự do. Hãy lưu C++ và quay về Blockly trước khi đổi cấu hình.</p>
-        <div class="config-grid"><form id="config-form" class="card"><div class="card-heading"><h3>01 / Board profile</h3><button id="new-board" type="button" class="quiet">Tạo board trống</button></div><label>Tên board<input id="config-name" required maxlength="80"></label><label>Chip / build target<select id="config-target"><option value="esp32">ESP32 DevKit / WROOM</option><option value="esp32s3">ESP32-S3 / board tùy biến</option></select></label><label>Kết nối Serial với máy tính<select id="config-serial"><option value="default">Mặc định của board profile</option><option value="uart">UART qua chip USB–Serial (CP210x / CH340…)</option><option value="usb-cdc">USB native · bật CDC khi khởi động</option></select></label><p id="usb-help" class="muted"></p><label>Sau khi nạp firmware<select id="config-upload-reset"><option value="auto">Tự khởi động lại</option><option value="manual">Tôi nhấn RST — nếu USB lỗi khi tự reset</option></select></label><label>GPIO trên board — danh sách của bạn (phân cách bằng dấu phẩy)<input id="config-pins" required></label><p class="muted">Tự khai báo chân theo sơ đồ board; không có whitelist khóa GPIO. Có thể nhập chân ngoài danh sách gợi ý. Thông tin boot, flash, USB, ADC… chỉ để tham khảo.</p><div class="card-heading"><h3>02 / Thiết bị</h3><div class="add-device-controls"><select id="driver-select" aria-label="Loại thiết bị mới"><option value="gpio.output">GPIO output</option><option value="gpio.input">GPIO input</option><option value="adc.input">ADC input</option><option value="pwm.output">PWM output</option><option value="servo.pwm">Servo PWM</option><option value="motor.hbridge2">Motor 2 PWM · IN1 / IN2</option></select><button id="add-device" type="button" class="quiet">+ Thêm thiết bị</button></div></div><datalist id="gpio-options"></datalist><div id="device-list"></div><button class="primary" type="submit">Áp dụng cấu hình GUI</button></form>
-        <div class="card"><div class="card-heading"><h3>config.json</h3><span class="subtle-label">SCHEMA v1</span></div><textarea id="config-json" aria-label="Cấu hình JSON" spellcheck="false"></textarea><button id="apply-json" class="primary">Áp dụng JSON</button><p class="muted">Chỉnh sửa chỉ có hiệu lực sau khi áp dụng. Khi có lỗi, cấu hình đang dùng được giữ nguyên.</p><pre id="config-errors" role="alert"></pre><pre id="config-warnings" class="pin-notes"></pre><div id="pwm-resources" class="muted"></div></div></div>
-      </section>
-      <section id="device-view" class="view" hidden>
-        <div class="device-grid"><div class="card"><div class="eyebrow">01 / COMPILE & UPLOAD</div><h2>Đưa chương trình lên board</h2><p>Biên dịch trên máy này qua PlatformIO. Chọn đúng cổng USB trước khi nạp.</p><div class="connection-row"><select id="ports" aria-label="Cổng nạp firmware"><option value="">Chưa chọn cổng</option></select><button id="refresh-ports">Quét cổng</button></div><p id="build-state" class="info">Chưa có bản build thành công trong phiên này.</p><button id="upload" class="primary" disabled>↗ Nạp firmware</button><p class="muted">Nạp sẽ thay firmware hiện tại. ESP32 chạy chương trình độc lập sau khi nạp; không cần giữ web mở.</p></div>
-        <div class="card"><div class="eyebrow">02 / SERIAL MONITOR</div><h2>Lắng nghe thiết bị</h2><p>Mở cổng qua trình duyệt để đọc log ở 115200 baud. Đóng Serial trước khi nạp firmware.</p><button id="serial-connect">Kết nối Serial</button><button id="serial-clear" class="quiet">Xóa log</button><pre id="serial-log" aria-label="Log serial">Chưa kết nối. Cần Chrome hoặc Edge hỗ trợ Web Serial.</pre><p class="muted">Đây là dữ liệu serial thực. Chưa có debug từng bước hoặc theo dõi block đang chạy.</p></div></div>
-      </section>
-      <section id="guide-view" class="view" hidden><div class="guide-grid"><div class="card"><div class="eyebrow">BÀI ĐẦU TIÊN</div><h2>Một đèn LED. Cả một luồng làm việc.</h2><ol class="steps"><li><strong>Khai báo phần cứng</strong><p>Ví dụ: GPIO23 → điện trở 330Ω → anode LED; cathode → GND. Đổi chân trong Configuration nếu sơ đồ board khác.</p></li><li><strong>Đọc chương trình</strong><p>Trong “Lặp mãi”, bật LED, chờ 500 ms, tắt LED, chờ 500 ms. Bấm block để chọn dòng C++ tương ứng.</p></li><li><strong>Biên dịch và nạp</strong><p>Bấm Biên dịch, mở Thiết bị, quét cổng và chọn đúng ESP32 DevKit. Nạp firmware rồi quan sát LED.</p></li><li><strong>Đi sâu hơn</strong><p>Chuyển sang C++ tự do. Bản block được khóa; code không bị tự ghi đè. Khi quay lại, bản C++ được lưu vào lịch sử và file project.</p></li></ol></div><div class="card guide-side"><span class="guide-icon">◈</span><h2>Nền móng trước.<br>Mở rộng tiếp.</h2><p>Đang có: GPIO input/output, ADC, PWM, servo và motor IN1/IN2 (hai PWM), Blockly + C++, cấu hình, build/upload và Serial.</p><p>Motor/servo chỉ cần khai báo khi thêm thiết bị. Motor chạy có thời hạn rồi dừng; servo không phát xung cho đến khi có block điều khiển. Tiếp theo: encoder, bus cảm biến, lưu online và AI.</p><div class="info">Chủ dự án đã báo thử thành công cả ESP32 và ESP32-S3. Chưa có bảng xác nhận riêng từng driver/ngoại vi.</div></div></div></section>
-      <section class="console"><div class="console-heading"><strong><span class="dot"></span> Build console</strong><span id="job-status">Sẵn sàng</span><button id="clear-log" class="quiet">Xóa log</button></div><pre id="build-log" aria-label="Nhật ký biên dịch">TT ESPStudio · Chọn Biên dịch để kiểm tra firmware bằng toolchain thật.</pre></section>
-    </main><footer><span>TT ESPStudio / ${compiler.isAgent ? 'Web + Agent preview' : 'Local development preview'}</span><span>Cấu hình mở · Blockly + C++ · ESP32</span></footer>
-  </div>
-  <input type="file" id="file-input" accept="application/json,.json" hidden>
-  <dialog id="history-dialog"><div class="card-heading"><h2>Lịch sử C++</h2><button id="close-history" aria-label="Đóng lịch sử">✕</button></div><p>Bản C++ và cấu hình đi kèm được giữ trong project. Tải xuống để tiếp tục sử dụng.</p><div id="history-items"></div><button id="clear-history">Xóa lịch sử sau khi đã xuất project</button></dialog>
-`;
+document.querySelector('#app')!.innerHTML = shell();
 const codeArea = $<HTMLTextAreaElement>('code');
+let ide: ReturnType<typeof initIde> | undefined;
 // Keep the selector aligned with the schema/build profiles for every chip family.
 $<HTMLSelectElement>('config-target').replaceChildren(...Object.entries(targets).map(([id, target]) => new Option(target.label, id)));
 const connectButton = document.createElement('button'); connectButton.id = 'agent-connect'; connectButton.textContent = 'Kết nối compiler'; connectButton.className = 'quiet';
@@ -77,7 +41,7 @@ const cancelButton = document.createElement('button'); cancelButton.id = 'cancel
 $('clear-log').before(cancelButton);
 let activeJob: string | null = null;
 let pairingRequest = '';
-connectButton.onclick = () => { if (compiler.isAgent) setView('device'); void connectBridge(); };
+connectButton.onclick = () => { ide?.showDialog('settings-dialog'); void connectBridge(); };
 $('agent-pair-request').onclick = async () => {
   const button = $<HTMLButtonElement>('agent-pair-request');
   button.disabled = true; $<HTMLButtonElement>('agent-unpair').disabled = true;
@@ -118,10 +82,12 @@ function paintCodeRange() {
 }
 codeArea.addEventListener('scroll', paintCodeRange);
 new ResizeObserver(paintCodeRange).observe(codeArea);
-const workspace = Blockly.inject('blockly', { toolbox, trashcan: true, grid: { spacing: 22, length: 2, colour: '#cbd6d0', snap: true }, zoom: { controls: true, wheel: true, startScale: 0.86, maxScale: 1.4, minScale: 0.5 }, move: { scrollbars: true, drag: true, wheel: true }, sounds: false });
+const workspace = Blockly.inject('blockly', { toolbox, trashcan: true, grid: { spacing: 22, length: 1, colour: '#d7e1e2', snap: true }, zoom: { controls: false, wheel: true, startScale: 1.12, maxScale: 2, minScale: 0.4 }, move: { scrollbars: true, drag: true, wheel: true }, sounds: false });
 let generated: Generated | null = null; let generationError = ''; let suppressEvents = true; let busy = false; let token = '';
 let lastBuild: { id: string; fingerprint: string } | null = null;
 let currentView = 'program';
+let buildAction: 'build' | 'upload' = 'upload';
+ide = initIde(workspace, codeArea, notify);
 let configPending = false;
 const draftStatus = document.createElement('div'); draftStatus.className = 'info'; draftStatus.hidden = true;
 draftStatus.innerHTML = 'Cấu hình đang là bản nháp, chưa dùng để biên dịch/nạp. Áp dụng cấu hình hoặc <button type="button" id="discard-config">Bỏ bản nháp</button>';
@@ -134,7 +100,7 @@ $('config-form').addEventListener('click', event => { if ((event.target as Eleme
 $('config-json').addEventListener('input', markConfigPending);
 Blockly.serialization.workspaces.load(project.workspace, workspace); suppressEvents = false;
 $<HTMLInputElement>('project-name').value = project.name;
-function notify(message: string, error = false) { $('notice').hidden = false; $('notice').textContent = message; $('notice').className = error ? 'error' : 'info'; }
+function notify(message: string, error = false) { $('notice').dataset.message = message; $('notice').hidden = false; $('notice').textContent = message; $('notice').className = error ? 'error' : 'info'; }
 function snapshot() { project.workspace = Blockly.serialization.workspaces.save(workspace); }
 function persist() {
   snapshot(); if (storageLocked) { $('save-state').textContent = 'Chưa lưu — cần cứu hộ'; return; }
@@ -144,9 +110,12 @@ function persist() {
 function fingerprint() { return JSON.stringify({ config: project.config, code: project.code }); }
 function syncButtons() {
   const configMode = project.mode === 'code';
-  $<HTMLButtonElement>('build').disabled = busy || !token || !!generationError || configPending;
+  $<HTMLButtonElement>('build').disabled = busy || !!generationError || configPending;
   $<HTMLButtonElement>('upload').disabled = busy || !token || !!generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !$<HTMLSelectElement>('ports').value;
-  $('build').textContent = busy ? 'Đang xử lý…' : '▷ Biên dịch';
+  $('build-label').textContent = busy ? 'Đang xử lý…' : buildAction === 'upload' ? 'Biên dịch và nạp' : 'Chỉ biên dịch';
+  $('build').setAttribute('data-agent-ready',String(!!token));
+  $('blocks-mode').setAttribute('aria-pressed',String(!configMode)); $('code-mode').setAttribute('aria-pressed',String(configMode));
+  ide?.setFocus(configMode ? 'code' : 'blocks', false);
   $('block-lock').hidden = !configMode; $('blockly').classList.toggle('locked', configMode); $('blockly').inert = configMode;
   codeArea.readOnly = !configMode;
   $('blocks-mode').classList.toggle('selected', !configMode); $('code-mode').classList.toggle('selected', configMode);
@@ -168,21 +137,24 @@ function refreshCode() {
     try { generated = generate(project.config, readProgram(workspace)); project.code = generated.code; }
     catch (error) { generationError = describeError(error); generated = null; notify(generationError, true); }
   }
-  codeArea.value = project.code; syncButtons();
-  if (previousError && !generationError && $('notice').textContent === previousError) $('notice').hidden = true;
+  codeArea.value = project.code; ide?.renderCode(); syncButtons();
+  if (previousError && !generationError && $('notice').dataset.message === previousError) $('notice').hidden = true;
   const selected = Blockly.getSelected();
   selectedRange = generated && selected ? generated.ranges[selected.id] : undefined;
   paintCodeRange();
   $('code-selection').textContent = generationError ? 'Blockly chưa hợp lệ · C++ đang giữ bản sinh thành công gần nhất' : selectedRange ? `Block → dòng ${selectedRange.start}–${selectedRange.end}` : 'Chọn block để xem đoạn C++ tương ứng';
 }
 function setView(view: string) {
+  if (view === 'device') { ide?.showDialog('settings-dialog'); return; }
+  if (view === 'guide') { ide?.showDialog('help-dialog'); return; }
   currentView = view;
   document.querySelectorAll<HTMLElement>('.view').forEach(el => el.hidden = el.id !== `${view}-view`);
   document.querySelectorAll<HTMLElement>('.nav').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  const titles: Record<string, [string, string]> = { program: ['Một ý tưởng. Một chương trình.', 'Kéo block, hiểu C++, và đưa ý tưởng lên board của bạn.'], config: ['Bắt đầu từ phần cứng.', 'Board profile là nền móng của chương trình.'], device: ['Kết nối thế giới thật.', 'Biên dịch, nạp firmware và đọc dữ liệu từ ESP32.'], guide: ['Từng bước, cùng bạn.', 'Luồng thực hành đầu tiên với ESP32 DevKit.'] };
-  $('page-title').textContent = titles[view][0]; $('page-description').textContent = titles[view][1];
-  if (view === 'program') requestAnimationFrame(() => { Blockly.svgResize(workspace); workspace.scrollCenter(); });
+  $('palette').hidden = view !== 'program'; $('config-summary').hidden = view !== 'config';
+  workspace.getFlyout()?.hide();
+  if (view === 'program') requestAnimationFrame(() => Blockly.svgResize(workspace));
 }
+
 document.querySelectorAll<HTMLElement>('[data-view]').forEach(el => el.onclick = () => setView(el.dataset.view!));
 $('edit-board').onclick = () => setView('config');
 workspace.addChangeListener(event => {
@@ -193,7 +165,7 @@ workspace.addChangeListener(event => {
       const lines = project.code.split('\n'); const start = lines.slice(0, range.start - 1).reduce((n, line) => n + line.length + 1, 0);
       const end = start + lines.slice(range.start - 1, range.end).join('\n').length;
       // Keep focus in Blockly: stealing it here interrupts the active block drag.
-      codeArea.setSelectionRange(start, end); codeArea.scrollTop = Math.max(0, (range.start - 5) * 23);
+      codeArea.setSelectionRange(start, end); codeArea.scrollTop = Math.max(0, (range.start - 5) * parseFloat(getComputedStyle(codeArea).lineHeight));
       $('code-selection').textContent = `Block → dòng ${range.start}–${range.end}`;
     }
     paintCodeRange();
@@ -202,16 +174,16 @@ workspace.addChangeListener(event => {
   if (project.mode === 'blocks') { refreshCode(); persist(); }
 });
 function enterCode() {
-  if (project.mode === 'code') return;
+  if (project.mode === 'code') { ide?.setFocus('code'); return; }
   const hadError = !!generationError;
   snapshot(); project.mode = 'code'; generationError = ''; selectedRange = undefined;
-  syncButtons(); paintCodeRange(); persist(); codeArea.focus();
+  ide?.setFocus('code'); syncButtons(); paintCodeRange(); persist(); requestAnimationFrame(() => codeArea.focus());
   $('code-selection').textContent = 'Đang chỉnh sửa C++ tự do';
   if (hadError) notify('Blockly chưa hợp lệ. Bạn đang sửa bản C++ được giữ lại trên màn hình; bản này chưa phản ánh các thay đổi Blockly bị lỗi. Snapshot các block vẫn được giữ.');
 }
 function enterBlocks() {
-  if (project.mode === 'blocks') return;
-  try { project = returnToBlocks(project); refreshCode(); renderConfig(); persist(); notify('Đã lưu bản C++ và cấu hình vào lịch sử. Blockly tiếp tục từ snapshot trước đó.'); }
+  if (project.mode === 'blocks') { ide?.setFocus('blocks'); return; }
+  try { project = returnToBlocks(project); ide?.setFocus('blocks'); refreshCode(); renderConfig(); persist(); notify('Đã lưu bản C++ và cấu hình vào lịch sử. Blockly tiếp tục từ snapshot trước đó.'); }
   catch (error) { notify(describeError(error), true); }
 }
 $('code-mode').onclick = enterCode; $('blocks-mode').onclick = enterBlocks; $('restore-blocks').onclick = enterBlocks;
@@ -224,8 +196,8 @@ function download(name: string, data: string | Uint8Array, type = 'application/j
 function exportProject() { snapshot(); download('espstudio-project.json', JSON.stringify(project, null, 2)); }
 $('export-project').onclick = exportProject;
 $('open-example').onclick = () => {
-  if (!confirm('Mở project mới sẽ thay không gian hiện tại. Bấm OK để tải bản sao project hiện tại trước khi mở.')) return;
-  exportProject(); const selected = example($<HTMLSelectElement>('example-select').value);
+  if (!confirm(t('Mở project mới sẽ thay không gian hiện tại. Bấm OK để tải bản sao project hiện tại trước khi mở.'))) return;
+  $<HTMLDialogElement>('project-dialog').close(); exportProject(); const selected = example($<HTMLSelectElement>('example-select').value);
   project = { schemaVersion: 1, name: selected.name, config: selected.config, workspace: selected.workspace, mode: 'blocks', code: '', codeHistory: [] };
   suppressEvents = true; setDevices(project.config.devices); Blockly.serialization.workspaces.load(project.workspace, workspace); suppressEvents = false;
   $<HTMLInputElement>('project-name').value = project.name; renderConfig(); refreshCode(); persist();
@@ -240,7 +212,7 @@ $('export-source').onclick = () => {
   download('espstudio-platformio.zip', zipSync(files), 'application/zip');
 };
 let fileAction: 'project' | 'config' = 'project';
-function pickFile(action: typeof fileAction) { fileAction = action; $<HTMLInputElement>('file-input').value = ''; $<HTMLInputElement>('file-input').click(); }
+function pickFile(action: typeof fileAction) { $<HTMLDialogElement>('project-dialog').close(); fileAction = action; $<HTMLInputElement>('file-input').value = ''; $<HTMLInputElement>('file-input').click(); }
 $('import-project').onclick = () => pickFile('project'); $('import-config').onclick = () => pickFile('config');
 $<HTMLInputElement>('file-input').onchange = async event => {
   const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return;
@@ -251,7 +223,7 @@ $<HTMLInputElement>('file-input').onchange = async event => {
     else {
       const next = projectSchema.parse(data);
       try { validateWorkspace(next.workspace, next.config); } finally { setDevices(project.config.devices); }
-      if (!confirm('Nhập project sẽ thay không gian đang mở. Bấm OK để tải bản sao project hiện tại rồi nhập.')) return;
+      if (!confirm(t('Nhập project sẽ thay không gian đang mở. Bấm OK để tải bản sao project hiện tại rồi nhập.'))) return;
       exportProject(); suppressEvents = true;
       setDevices(next.config.devices); Blockly.serialization.workspaces.load(next.workspace, workspace); project = next; suppressEvents = false;
       $<HTMLInputElement>('project-name').value = project.name; refreshCode(); renderConfig(); persist(); notify('Đã nhập project. Bản trước được tải xuống máy.');
@@ -312,10 +284,10 @@ $('history').onclick = () => {
     const button = document.createElement('button'); button.textContent = 'Tải C++ + config'; button.onclick = () => download(`cpp-history-${index + 1}.zip`, zipSync({ 'src/main.cpp': strToU8(item.code), 'platformio.ini': strToU8(platformioIni(item.config)), 'board.config.json': strToU8(JSON.stringify(item.config, null, 2)) }), 'application/zip'); row.append(label, button); $('history-items').append(row);
   });
   if (!project.codeHistory.length) $('history-items').textContent = 'Chưa có bản C++ lưu trong lịch sử.';
-  $<HTMLDialogElement>('history-dialog').showModal();
+  $<HTMLDialogElement>('project-dialog').close(); $<HTMLDialogElement>('history-dialog').showModal();
 };
 $('close-history').onclick = () => $<HTMLDialogElement>('history-dialog').close();
-$('clear-history').onclick = () => { if (confirm('Xuất toàn bộ project rồi xóa lịch sử C++ khỏi phiên làm việc?')) { exportProject(); project.codeHistory = []; persist(); syncButtons(); $<HTMLDialogElement>('history-dialog').close(); } };
+$('clear-history').onclick = () => { if (confirm(t('Xuất toàn bộ project rồi xóa lịch sử C++ khỏi phiên làm việc?'))) { exportProject(); project.codeHistory = []; persist(); syncButtons(); $<HTMLDialogElement>('history-dialog').close(); } };
 async function api(path: string, body?: unknown) {
   try { return await compiler.request(path, body); }
   catch (error) { if (!compiler.token) { token = ''; lastBuild = null; syncButtons(); } throw error; }
@@ -325,7 +297,7 @@ async function connectBridge() {
   try {
     await compiler.connect();
     token = compiler.token; $('bridge-state').textContent = compiler.isAgent ? '● Agent đã ghép nối' : '● Bridge sẵn sàng'; $('agent-message').textContent = 'Compiler đã kết nối và sẵn sàng.';
-    if (bridgeNotice && $('notice').textContent === bridgeNotice) $('notice').hidden = true;
+    if (bridgeNotice && $('notice').dataset.message === bridgeNotice) $('notice').hidden = true;
     bridgeNotice = '';
   }
   catch (error) { token = ''; lastBuild = null; $('bridge-state').textContent = compiler.isAgent ? 'Agent chưa sẵn sàng' : 'Bridge chưa chạy'; $('agent-message').textContent = describeError(error); if (!startupError) { bridgeNotice = compiler.isAgent ? `Chưa thể build/nạp: ${describeError(error)} Trình soạn thảo vẫn hoạt động.` : 'Chạy Start-ESPStudio.cmd để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'; notify(bridgeNotice); } }
@@ -343,52 +315,61 @@ async function watchJob(job: Job) {
   }
   } finally { activeJob = null; cancelButton.hidden = true; }
 }
-$('build').onclick = async () => {
-  if (compiler.isAgent && !compiler.usbConfiguration && (project.config.board.serialTransport || project.config.board.uploadReset)) return notify('Cấu hình USB/reset cần Agent preview.4 trở lên. Cài và mở bản mới rồi ghép nối lại.', true);
-  if (compiler.isAgent && !compiler.supportedTargets.includes(project.config.board.target)) return notify('Agent đang kết nối chưa hỗ trợ chip này. Cài và mở bản Agent mới rồi kết nối lại.', true);
+async function buildFirmware(): Promise<boolean> {
+  if (compiler.isAgent && !compiler.usbConfiguration && (project.config.board.serialTransport || project.config.board.uploadReset)) { notify('Cấu hình USB/reset cần Agent preview.4 trở lên. Cài và mở bản mới rồi ghép nối lại.', true); return false; }
+  if (compiler.isAgent && !compiler.supportedTargets.includes(project.config.board.target)) { notify('Agent đang kết nối chưa hỗ trợ chip này. Cài và mở bản Agent mới rồi kết nối lại.', true); return false; }
   if (project.mode === 'blocks') refreshCode();
-  if (generationError || configPending || busy) return; busy = true; lastBuild = null; syncButtons(); const submitted = fingerprint();
+  if (generationError || configPending || busy) return false; busy = true; lastBuild = null; syncButtons(); const submitted = fingerprint();
+  ide?.showMonitor('build');
   try {
     const result = await watchJob(await api('build', { config: project.config, code: project.code }));
-    if (result.status === 'success') { lastBuild = { id: result.id, fingerprint: submitted }; $('build-state').textContent = 'Build thành công. Chọn cổng để nạp firmware.'; notify('Biên dịch firmware thành công. Mở Thiết bị để chọn cổng và nạp.'); }
-    else { $('build-state').textContent = 'Biên dịch thất bại. Xem Build console.'; notify('Biên dịch thất bại. Chi tiết từ toolchain nằm trong Build console.', true); }
+    if (result.status === 'success') { lastBuild = { id: result.id, fingerprint: submitted }; $('build-state').textContent = 'Build thành công. Chọn cổng để nạp firmware.'; notify('Biên dịch thành công. Chọn cổng nạp trên thanh công cụ; mở menu biên dịch để nạp bản vừa tạo.'); return true; }
+    else { $('build-state').textContent = 'Biên dịch thất bại. Xem nhật ký biên dịch.'; notify('Biên dịch thất bại. Chi tiết từ toolchain nằm trong nhật ký biên dịch.', true); }
   } catch (error) { notify(describeError(error), true); }
   finally { busy = false; syncButtons(); }
+  return false;
+}
+function closeBuildMenu() { $('build-menu').hidden = true; $('build-options').setAttribute('aria-expanded','false'); }
+$('build-options').onclick = () => { const open = $('build-menu').hidden; $('build-menu').hidden = !open; $('build-options').setAttribute('aria-expanded',String(open)); };
+document.addEventListener('click', event => { if (!(event.target as Element).closest('.build-controls')) closeBuildMenu(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeBuildMenu(); });
+document.querySelectorAll<HTMLButtonElement>('[data-build-action]').forEach(button => button.onclick = () => { buildAction = button.dataset.buildAction as 'build'|'upload'; closeBuildMenu(); syncButtons(); });
+$('build').onclick = async () => {
+  closeBuildMenu();
+  if (!token) { ide?.showDialog('settings-dialog'); notify('Cần ghép nối Agent trước khi biên dịch.'); return; }
+  const action = buildAction; const port = $<HTMLSelectElement>('ports').value;
+  if (action === 'upload' && !port) { notify('Chọn cổng nạp trước khi biên dịch và nạp.', true); $('ports').focus(); return; }
+  const submitted = fingerprint();
+  if (!await buildFirmware() || action !== 'upload') return;
+  if (submitted !== fingerprint() || port !== $<HTMLSelectElement>('ports').value || configPending) { notify('Chương trình hoặc cổng đã thay đổi. Hãy biên dịch và nạp lại bản hiện tại.', true); return; }
+  await uploadFirmware();
 };
 $('refresh-ports').onclick = async () => {
-  try { if (!token) await connectBridge(); const ports = await api('ports') as { port: string; description?: string }[]; const select = $<HTMLSelectElement>('ports'); select.replaceChildren(new Option('Chọn đúng cổng ESP32…', '')); for (const p of ports) select.add(new Option(`${p.port} · ${p.description ?? 'Serial'}`, p.port)); notify(ports.length ? 'Đã cập nhật danh sách cổng. Chọn đúng board của bạn.' : 'Chưa tìm thấy cổng serial. Kiểm tra USB và driver.'); syncButtons(); }
+  try { if (!token) { ide?.showDialog('settings-dialog'); await connectBridge(); if (!token) { notify('Ghép Agent để quét cổng nạp. Kết nối Serial dùng hộp chọn cổng của trình duyệt.'); return; } } const ports = await api('ports') as { port: string; description?: string }[]; const select = $<HTMLSelectElement>('ports'); select.replaceChildren(new Option('Chọn đúng cổng ESP32…', '')); for (const p of ports) select.add(new Option(`${p.port} · ${p.description ?? 'Serial'}`, p.port)); notify(ports.length ? 'Đã cập nhật danh sách cổng. Chọn đúng board của bạn.' : 'Chưa tìm thấy cổng serial. Kiểm tra USB và driver.'); syncButtons(); }
   catch (error) { notify(describeError(error), true); }
 };
 $('ports').onchange = syncButtons;
-$('upload').onclick = async () => {
+async function uploadFirmware() {
+  closeBuildMenu(); ide?.showMonitor('build');
   const port = $<HTMLSelectElement>('ports').value;
   if (generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !port || busy) return;
-  if (!compiler.nativeUploadConsent && !confirm(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`)) return;
+  if (!compiler.nativeUploadConsent && !confirm(t(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`))) return;
   if (compiler.nativeUploadConsent) notify('Kiểm tra board/cổng và xác nhận nạp trên cửa sổ TT ESPStudio Agent.');
   busy = true; syncButtons();
   try { await disconnectSerial(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); const message = result.status === 'success' ? (project.config.board.uploadReset === 'manual' ? 'Đã nạp firmware. Nhấn RST để chạy chương trình, rồi quét/chọn lại cổng nếu COM thay đổi.' : 'Nạp thành công. Kiểm tra chương trình trên board; nếu USB đổi cổng, quét/chọn lại COM để dùng Serial.') : result.diagnostic ?? 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.'; $('build-state').textContent = message; notify(message, result.status !== 'success'); }
   catch (error) { notify(describeError(error), true); }
   finally { busy = false; syncButtons(); }
 };
+$('upload').onclick = () => void uploadFirmware();
 $('clear-log').onclick = () => { $('build-log').textContent = ''; };
-interface SerialPortLike { readable: ReadableStream<Uint8Array> | null; open(options: { baudRate: number }): Promise<void>; close(): Promise<void> }
-const serial = (navigator as Navigator & { serial?: { requestPort(): Promise<SerialPortLike> } }).serial;
-let serialPort: SerialPortLike | null = null; let reader: ReadableStreamDefaultReader<Uint8Array> | null = null; let reading: Promise<void> | null = null;
-async function disconnectSerial() { if (reader) await reader.cancel(); if (reading) await reading; if (serialPort) { await serialPort.close(); serialPort = null; } $('serial-connect').textContent = 'Kết nối Serial'; }
-$('serial-connect').onclick = async () => {
-  try {
-    if (serialPort) { await disconnectSerial(); return; }
-    if (!serial) throw new Error('Trình duyệt chưa hỗ trợ Web Serial. Hãy dùng Chrome/Edge trên máy tính.');
-    serialPort = await serial.requestPort(); await serialPort.open({ baudRate: 115200 });
-    reader = serialPort.readable!.getReader(); $('serial-connect').textContent = 'Ngắt Serial'; $('serial-log').textContent = '';
-    reading = (async () => { const decoder = new TextDecoder(); try { while (reader) { const { value, done } = await reader.read(); if (done) break; $('serial-log').textContent = ($('serial-log').textContent + decoder.decode(value, { stream: true })).slice(-40000); $('serial-log').scrollTop = $('serial-log').scrollHeight; } } catch (error) { $('serial-log').textContent += `\n${describeError(error)}`; } finally { reader?.releaseLock(); reader = null; } })();
-  } catch (error) { serialPort = null; notify(describeError(error), true); }
-};
-$('serial-clear').onclick = () => { $('serial-log').textContent = ''; };
+const serialMonitor = new SerialMonitor(notify, () => ide?.showMonitor('serial'));
+async function disconnectSerial() { await serialMonitor.disconnect(); }
 window.addEventListener('resize', () => { if (currentView === 'program') Blockly.svgResize(workspace); });
 renderConfig(); refreshCode();
-requestAnimationFrame(() => workspace.scrollCenter());
+requestAnimationFrame(() => { if (innerWidth <= 800) workspace.zoomToFit(); else workspace.scrollCenter(); });
 if (startupError) { notify(startupError, true); const rescue = document.createElement('button'); rescue.textContent = 'Tải bản cứu hộ & cho phép lưu mới'; rescue.onclick = () => { download('espstudio-recovery.json', damagedSave); storageLocked = false; persist(); notify('Bản gốc đã được tải xuống. Có thể lưu project mới.'); }; $('notice').append(rescue); }
 else persist();
 if (!compiler.isAgent || compiler.token) void connectBridge();
 else { $('bridge-state').textContent = 'Agent chưa kết nối'; syncButtons(); }
+
+initLocale();

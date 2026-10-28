@@ -49,7 +49,7 @@ test('S3 firmware on GPIO33 builds through the same API without pin filtering', 
   await page.goto('/'); await expect(page.locator('#code')).toHaveValue(/void loop/);
   await page.locator('[data-view="config"]').click(); await page.locator('#config-target').selectOption('esp32s3');
   await page.locator('.d-pin').fill('33'); await page.getByRole('button', { name: 'Áp dụng cấu hình GUI' }).click();
-  await expect(page.locator('#build')).toBeEnabled(); await page.locator('#build').click();
+  await expect(page.locator('#build')).toBeEnabled(); await page.locator('#build-options').click(); await page.locator('[data-build-action="build"]').click(); await page.locator('#build').click();
   await expect(page.locator('#job-status')).toContainText('success', { timeout: 280000 });
   await expect(page.locator('#build-log')).toContainText('SUCCESS');
 });
@@ -59,7 +59,7 @@ test('real Blockly, C++ preservation, config validation and reload', async ({ pa
   await expect(page.locator('.blocklySvg').first()).toBeVisible();
   const code = page.getByRole('textbox', { name: 'Mã nguồn C++' });
   await expect(code).toHaveValue(/pin_status_led = 23/);
-  await page.getByRole('button', { name: 'C++ tự do', exact: true }).click();
+  await page.locator('#code-mode').click();
   await code.fill('// preserved custom code\nvoid setup() {}\nvoid loop() {}');
   await page.reload(); await expect(code).toHaveValue(/preserved custom code/);
   await expect(page.locator('#block-lock')).toBeVisible();
@@ -94,11 +94,11 @@ test('compile actual firmware through the UI and reject stale upload', async ({ 
   await page.addInitScript(({ config, workspace }) => localStorage.setItem('tt-espstudio.project.v1', JSON.stringify({ schemaVersion: 1, name: 'Hardware compile check', config, workspace, mode: 'blocks', code: '', codeHistory: [] })), { config: roboticsConfig, workspace: roboticsWorkspace });
   await page.goto('/'); await expect(page.locator('#build')).toBeEnabled();
   await expect(page.locator('#code')).toHaveValue(/motor_channel_drive_in2/);
-  await page.locator('#build').click();
+  await page.locator('#build-options').click(); await page.locator('[data-build-action="build"]').click(); await page.locator('#build').click();
   await expect(page.locator('#job-status')).toContainText('success', { timeout: 280000 });
   await expect(page.locator('#build-log')).toContainText('SUCCESS');
   await page.locator('#code-mode').click(); await page.locator('#code').fill('// changed\nvoid setup() {}\nvoid loop() {}');
-  await page.locator('[data-view="device"]').click();
+  await page.locator('#build-tab').click(); await page.locator('#build-options').click();
   await expect(page.locator('#build-state')).toContainText('Cần biên dịch lại'); await expect(page.locator('#upload')).toBeDisabled();
 });
 test('GPIO2, empty board and optional two-PWM motor/servo configuration', async ({ page }) => {
@@ -108,7 +108,7 @@ test('GPIO2, empty board and optional two-PWM motor/servo configuration', async 
   await page.locator('.d-pin').fill('2'); await page.getByRole('button', { name: 'Áp dụng cấu hình GUI' }).click();
   await expect(page.locator('#config-errors')).toHaveText(''); await expect(page.locator('#config-warnings')).toContainText('GPIO2');
   await page.locator('[data-view="program"]').click(); await expect(page.locator('#code')).toHaveValue(/pin_status_led = 2/);
-  page.on('dialog', dialog => dialog.accept()); await page.locator('#example-select').selectOption('empty'); await page.locator('#open-example').click();
+  page.on('dialog', dialog => dialog.accept()); await page.locator('#project-menu').click(); await page.locator('#example-select').selectOption('empty'); await page.locator('#open-example').click();
   await page.locator('[data-view="config"]').click(); await expect(page.locator('.device-row')).toHaveCount(0);
   await page.getByRole('button', { name: 'Áp dụng cấu hình GUI' }).click(); await expect(page.locator('#config-errors')).toHaveText('');
   await page.locator('#driver-select').selectOption('motor.hbridge2'); await page.locator('#add-device').click();
@@ -120,7 +120,7 @@ test('GPIO2, empty board and optional two-PWM motor/servo configuration', async 
   const config = JSON.parse(await page.locator('#config-json').inputValue());
   expect(config.devices[0]).toMatchObject({ driver: 'motor.hbridge2', in1: 19, in2: 21 }); expect(config.devices[0]).not.toHaveProperty('pwmPin');
   await page.reload(); await expect(page.locator('#code')).toHaveValue(/motor_channel_device_1_in2/); await expect(page.locator('#code')).toHaveValue(/ledcSetup\(channel_device_2, 50, 14\)/);
-  await page.locator('#example-select').selectOption('input-adc'); await page.locator('#open-example').click();
+  await page.locator('#project-menu').click(); await page.locator('#example-select').selectOption('input-adc'); await page.locator('#open-example').click();
   await expect(page.locator('#code')).toHaveValue(/analogRead\(pin_sensor\)/); await expect(page.locator('#code')).toHaveValue(/digitalRead\(pin_button\)/);
   await page.screenshot({ path: 'test-results/robotics-v02.png', fullPage: true });
   expect(errors).toEqual([]);
@@ -132,9 +132,9 @@ test('config JSON roundtrip, project import/export, source ZIP and mobile layout
   config.board.name = 'Custom teaching board'; config.devices[0].activeLow = true;
   await page.locator('#config-json').fill(JSON.stringify(config)); await page.locator('#apply-json').click();
   await expect(page.locator('#config-name')).toHaveValue('Custom teaching board');
-  const download = page.waitForEvent('download'); await page.locator('#export-project').click(); const exported = await download; expect(exported.suggestedFilename()).toBe('espstudio-project.json');
+  await page.locator('[data-view="program"]').click(); await page.locator('#project-menu').click(); const download = page.waitForEvent('download'); await page.locator('#export-project').click(); const exported = await download; expect(exported.suggestedFilename()).toBe('espstudio-project.json');
   const path = await exported.path(); page.on('dialog', dialog => dialog.accept());
-  await page.locator('#file-input').setInputFiles(path!);
+  await page.locator('[data-close="project-dialog"]').click(); await page.locator('#file-input').setInputFiles(path!);
   await expect(page.locator('#notice')).toContainText('Đã nhập project');
   await page.locator('[data-view="program"]').click();
   const zip = page.waitForEvent('download'); await page.locator('#export-source').click(); expect((await zip).suggestedFilename()).toBe('espstudio-platformio.zip');

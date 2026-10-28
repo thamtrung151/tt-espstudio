@@ -1,0 +1,23 @@
+const paths: Record<string, string> = {
+  blocks: '<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M6 9v9h9M9 6h9v9"/>',
+  settings: '<path d="m9 3-1 3-3 1 1 4-2 2 3 3v3l4 1 2-2 4 1 2-3-1-3 2-3-3-2-1-4z"/><circle cx="12" cy="12" r="3"/>',
+  usb: '<path d="M12 3v15M9 6l3-3 3 3M12 12l-5-3V6M12 15l5-3V8"/><circle cx="12" cy="20" r="2"/><circle cx="7" cy="5" r="1"/><path d="M16 6h2v2h-2z"/>',
+  plug: '<path d="M8 3v5m8-5v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3"/>',
+  play: '<path d="m6 3 15 9-15 9z"/>', chevron:'<path d="m6 9 6 6 6-6"/>',
+  refresh:'<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6"/>',
+  file:'<path d="M5 3h9l5 5v13H5zM14 3v6h5M8 13h8m-8 4h6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',
+  fit:'<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/>',
+  center:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 1v4m0 14v4M1 12h4m14 0h4"/>',
+  copy:'<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',
+  download:'<path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/>',
+  trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
+  pause:'<path d="M8 4v16M16 4v16"/>',send:'<path d="m3 3 18 9-18 9 4-9zM7 12h14"/>',
+  terminal:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m6 8 4 4-4 4m7 0h4"/>',
+  search:'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 4 3c-1 .5-1 1-1 2m0 3v.1"/>',
+  robot:'<rect x="4" y="7" width="16" height="13" rx="5"/><path d="M12 3v4M1 11v5m22-5v5"/><circle cx="12" cy="2" r="1"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 17h6"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
+  close:'<path d="m6 6 12 12M6 18 18 6"/>',
+};
+export const icon = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name] ?? paths.file}</svg>`;
