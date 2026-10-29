@@ -22,6 +22,7 @@ export function highlightCpp(code: string): string {
   return html + escape(code.slice(last)) + '\n';
 }
 export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaElement, notify: (text: string, error?: boolean) => void) {
+  let glassActive=false;
   const preferences = readPreferences(); let monitorTab: 'serial' | 'build'='serial';
   const save = () => { try { localStorage.setItem(prefKey, JSON.stringify(preferences)); } catch { /* UI settings are optional. */ } };
   const resize = () => { if (!$('program-view').hidden) Blockly.svgResize(workspace); };
@@ -33,7 +34,11 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
     $('monitor').classList.toggle('collapsed',preferences.collapsed);
     $('monitor-toggle').setAttribute('aria-expanded',String(!preferences.collapsed));
     $('pane-divider').setAttribute('aria-valuenow',String(Math.round(preferences.ratio)));
-    requestAnimationFrame(resize); save();
+    requestAnimationFrame(()=>{
+      resize();const glass=preferences.theme==='transparent'&&!document.querySelector('.ide')!.classList.contains('code-focus');
+      if(glass!==glassActive){const sign=glass?1:-1;workspace.scroll(workspace.scrollX+sign*(document.querySelector('.sidebar')!.getBoundingClientRect().right+10),workspace.scrollY+sign*document.querySelector('.block-tabs')!.getBoundingClientRect().bottom);glassActive=glass;}
+      workspace.getFlyout()?.position();
+    }); save();
   };
   function setFocus(mode: 'blocks'|'code', changeRatio=true) {
     document.querySelector('.ide')!.classList.toggle('code-focus',mode==='code');
@@ -76,7 +81,13 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   let activeCategory=-1;
   const flyout = workspace.getFlyout();
   // Blockly exposes this hook for a flyout independent of canvas zoom.
-  if (flyout instanceof Blockly.VerticalFlyout) flyout.getFlyoutScale = () => 1;
+  if (flyout instanceof Blockly.VerticalFlyout) {
+    flyout.getFlyoutScale = () => 1;
+    const getX=flyout.getX.bind(flyout),getY=flyout.getY.bind(flyout);
+    const glass=()=>document.documentElement.dataset.theme==='transparent'&&!document.querySelector('.ide')!.classList.contains('code-focus');
+    flyout.getX=()=>glass()?document.querySelector('.sidebar')!.getBoundingClientRect().right+10:getX();
+    flyout.getY=()=>glass()?document.querySelector('.block-tabs')!.getBoundingClientRect().bottom:getY();
+  }
   function showGroup(index:number) {
     if ($('blockly').inert) return;
     if(activeCategory===index && flyout?.isVisible()){flyout.hide();activeCategory=-1}

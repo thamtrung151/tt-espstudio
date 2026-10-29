@@ -5,6 +5,20 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Board & chip":"Board & chip",
+"Cổng USB trên board":"Board USB port",
+"Mặc định":"Default",
+"Theo board profile":"Use board profile",
+"USB trực tiếp · CDC":"Direct USB · CDC",
+"PC → USB của ESP":"PC → ESP USB",
+"Nạp & GPIO":"Upload & GPIO",
+"Danh sách GPIO":"GPIO list",
+"Nhập số chân, cách nhau bằng dấu phẩy. Chọn theo sơ đồ board của bạn.":"Enter comma-separated pin numbers from your board pinout.",
+"USB Serial/JTAG · Serial qua cổng USB trực tiếp của chip.":"USB Serial/JTAG · Serial over the chip’s direct USB port.",
+"Bật CDC khi khởi động để dùng Serial qua USB trực tiếp.":"Enable CDC on boot for Serial over direct USB.",
+"Dùng cổng nối qua CP210x, CH340 hoặc chip USB–Serial khác.":"Use the port connected through CP210x, CH340 or another USB–Serial chip.",
+"Giữ thiết lập USB của board profile.":"Keep the board profile USB settings.",
+
 "Chọn giao diện":"Choose theme",
 "Nền trắng":"White",
 "Kết nối Compiler":"Connect Compiler",

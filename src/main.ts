@@ -113,7 +113,10 @@ $('config-form').addEventListener('click', event => { if ((event.target as Eleme
 $('config-json').addEventListener('input', markConfigPending);
 Blockly.serialization.workspaces.load(project.workspace, workspace); suppressEvents = false;
 $<HTMLInputElement>('project-name').value = project.name;
-function notify(message: string, error = false) { $('notice').dataset.message = message; $('notice').hidden = false; $('notice').textContent = message; $('notice').className = error ? 'error' : 'info'; }
+function notify(message: string, error = false) {
+  const notice=$('notice');notice.dataset.message=message;notice.hidden=false;notice.textContent=message;notice.className=error?'error':'info';
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches)notice.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:180,easing:'ease-out'});
+}
 function snapshot() { project.workspace = Blockly.serialization.workspaces.save(workspace); }
 function persist() {
   snapshot(); if (storageLocked) { $('save-state').textContent = 'Chưa lưu — cần cứu hộ'; return; }
@@ -278,9 +281,16 @@ $('add-device').onclick = () => {
 $<HTMLSelectElement>('config-target').onchange = () => { updateUsbHelp(); notify('Đã đổi target trong bản nháp. Danh sách GPIO của bạn được giữ nguyên; áp dụng cấu hình khi sẵn sàng.'); };
 function updateUsbHelp() {
   const target = $<HTMLSelectElement>('config-target').value;
-  $('usb-help').textContent = target === 'esp32' ? 'ESP32/WROOM dùng chip USB–Serial ngoài; không có USB native.' : 'Cắm vào USB trực tiếp của chip: chọn USB native để Serial hoạt động sau nạp. Lần đầu có thể cần giữ BOOT, nhấn rồi thả RST, sau đó thả BOOT. Sau nạp, nếu cần hãy nhấn RST và chọn lại cổng COM mới. Cổng qua CH340/CP210x dùng UART.';
+  $('usb-settings').hidden = target === 'esp32';
+  const serial = $<HTMLSelectElement>('config-serial');
+  if (target === 'esp32' && serial.value === 'usb-cdc') serial.value = 'default';
+  document.querySelectorAll<HTMLButtonElement>('[data-transport]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.transport===serial.value)));
+  $('usb-help').textContent = serial.value === 'usb-cdc' ? (target === 'esp32c3' ? 'USB Serial/JTAG · Serial qua cổng USB trực tiếp của chip.' : 'Bật CDC khi khởi động để dùng Serial qua USB trực tiếp.') : serial.value === 'uart' ? 'Dùng cổng nối qua CP210x, CH340 hoặc chip USB–Serial khác.' : 'Giữ thiết lập USB của board profile.';
 }
 $<HTMLSelectElement>('config-serial').onchange = updateUsbHelp;
+document.querySelectorAll<HTMLButtonElement>('[data-transport]').forEach(button=>button.onclick=()=>{
+  $<HTMLSelectElement>('config-serial').value=button.dataset.transport!;updateUsbHelp();markConfigPending();
+});
 function applyConfig(config: Config) {
   if (project.mode === 'code') throw new Error('Hãy quay về Blockly trước khi đổi cấu hình.');
   for (const block of workspace.getAllBlocks(false)) {

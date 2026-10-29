@@ -7,7 +7,7 @@ test('USB CDC and manual reset persist through GUI, reload and PlatformIO export
   await page.goto('/'); await expect(page.locator('#code')).toHaveValue(/void loop/);
   await page.locator('[data-view="config"]').click();
   await page.locator('#config-target').selectOption('esp32s2');
-  await page.locator('#config-serial').selectOption('usb-cdc');
+  await page.locator('[data-transport=usb-cdc]').click();
   await page.locator('#config-upload-reset').selectOption('manual');
   await page.getByRole('button', { name: 'Áp dụng cấu hình GUI' }).click();
   await expect(page.locator('#config-errors')).toHaveText('');

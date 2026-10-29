@@ -16,7 +16,7 @@ export const shell = () => `
   <aside class="sidebar"><nav aria-label="Điều hướng chính"><button class="nav active" data-view="program">${icon('blocks')}<span>Lập trình</span></button><button class="nav" data-view="config">${icon('settings')}<span>Cấu hình</span></button></nav>
     <section id="palette"><h2>Khối lệnh</h2><label class="block-search">${icon('search')}<input id="block-search" placeholder="Tìm khối…" aria-label="Tìm khối lệnh"></label><div id="block-categories"></div><p id="search-empty" class="muted" hidden>Không tìm thấy khối.</p></section>
     <section id="config-summary" hidden><h2>Board</h2><strong id="board-name"></strong><p id="board-subtitle" class="muted"></p><button id="edit-board">Board & thiết bị</button></section>
-    <div class="sidebar-bottom"><button id="help" class="quiet">${icon('help')}<span>Hướng dẫn</span></button><span>v0.4.3</span></div>
+    <div class="sidebar-bottom"><button id="help" class="quiet">${icon('help')}<span>Hướng dẫn</span></button><span>v0.4.4</span></div>
   </aside>
   <main class="workbench">
     <div id="upload-consent-status" role="alert" hidden>Chờ xác nhận trên Agent… Kiểm tra cửa sổ TT ESPStudio Agent và chọn Có để nạp.</div><div id="notice" role="status" aria-live="polite" hidden></div>
