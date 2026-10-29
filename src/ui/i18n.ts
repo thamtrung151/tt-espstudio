@@ -5,6 +5,14 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Đang mở Agent. Cho phép trình duyệt mở ứng dụng nếu được hỏi.":"Opening Agent. Allow the browser to open the application if prompted.",
+"Chọn Có trên cửa sổ Agent để kết nối Compiler.":"Approve the Agent window to connect Compiler.",
+"Compiler đã kết nối.":"Compiler connected.",
+"Đã ngắt kết nối Compiler.":"Compiler disconnected.",
+"Ngắt kết nối Compiler":"Disconnect Compiler",
+"Đang kết nối Compiler…":"Connecting Compiler…",
+"Bấm Compiler trên thanh công cụ để kết nối.":"Click Compiler in the toolbar to connect.",
+"Chưa kết nối được Agent. Cho phép mở TT ESPStudio Agent và truy cập mạng cục bộ trong trình duyệt, rồi bấm Compiler để thử lại.":"Could not connect to Agent. Allow TT ESPStudio Agent to open and allow local network access in your browser, then click Compiler to retry.",
 "Board & chip":"Board & chip",
 "Cổng USB trên board":"Board USB port",
 "Mặc định":"Default",

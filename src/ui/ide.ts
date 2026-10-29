@@ -109,7 +109,7 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   };
   const showDialog=(id:string)=>{const dialog=$<HTMLDialogElement>(id); if(!dialog.open)dialog.showModal()};
   $('project-menu').onclick=()=>showDialog('project-dialog');$('new-project').onclick=()=>showDialog('project-dialog');
-  $('settings').onclick=()=>showDialog('settings-dialog');$('help').onclick=()=>showDialog('help-dialog');
+  $('help').onclick=()=>showDialog('help-dialog');
   document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button=>button.onclick=()=>$<HTMLDialogElement>(button.dataset.close!).close());
   $('account').onclick=()=>{$('info-title').textContent=t('Tài khoản');$('info-text').textContent=t('Chưa đăng nhập. Tính năng tài khoản sẽ có trong phiên bản sau.');showDialog('info-dialog')};
   $('ai-tutor').onclick=()=>{$('info-title').textContent='AI Tutor';$('info-text').textContent=t('AI Tutor sẽ có trong phiên bản sau.');showDialog('info-dialog')};

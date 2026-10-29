@@ -40,7 +40,7 @@ $('device-view').prepend(agentPanel);
 $('agent-help').textContent = 'Bấm Kết nối Compiler và xác nhận trên cửa sổ Agent nếu được hỏi.';
 agentPanel.querySelector('p')!.textContent = 'ESPStudio Agent giúp biên dịch và nạp chương trình từ website lên board của bạn. Cài Agent và mở ứng dụng trước khi kết nối.';
 const launchAgent = document.createElement('a'); launchAgent.href = 'ttespstudio://connect'; launchAgent.textContent = 'Mở Agent và kết nối'; launchAgent.hidden = true; launchAgent.className = 'quiet';
-launchAgent.onclick = () => { launchAgent.hidden = true; $('agent-message').textContent = 'Đang mở Agent…'; window.setTimeout(() => void connectCompiler(), 1500); };
+// Protocol activation is initiated only by an explicit Compiler click.
 launchAgent.title = 'Dành cho bộ cài có đăng ký liên kết TT ESPStudio. Bản Agent Dev vẫn mở bằng launcher .cmd.';
 $('agent-help').after(launchAgent);
 const cancelButton = document.createElement('button'); cancelButton.id = 'cancel-build'; cancelButton.textContent = 'Hủy biên dịch'; cancelButton.hidden = true;
@@ -53,19 +53,33 @@ async function connectCompiler() {
   connectingCompiler = true; launchAgent.hidden = true; syncButtons();
   let reachable = false;
   try {
-    if (compiler.isAgent) { await compiler.request('health'); reachable = true; }
-    try { await compiler.connect(); await connectBridge(); return; }
+    if (compiler.isAgent) {
+      try { await compiler.request('health'); reachable = true; }
+      catch {
+        notify('Đang mở Agent. Cho phép trình duyệt mở ứng dụng nếu được hỏi.');
+        launchAgent.click();
+        const deadline=Date.now()+25000;
+        while(Date.now()<deadline){
+          await new Promise(resolve=>setTimeout(resolve,700));
+          try { await compiler.request('health');reachable=true;break; } catch { /* startup or browser permission pending */ }
+        }
+        if(!reachable)throw new Error('Chưa kết nối được Agent. Cho phép mở TT ESPStudio Agent và truy cập mạng cục bộ trong trình duyệt, rồi bấm Compiler để thử lại.');
+      }
+    }
+    try { await compiler.connect(); await connectBridge(); if(token)notify('Compiler đã kết nối.'); return; }
     catch (error) { if (!compiler.isAgent || compiler.token) throw error; }
     const request = await compiler.requestPairing(); pairingRequest = request.requestId;
     if (request.claimSecret) {
       $('agent-pair-form').hidden = true;
       $('agent-message').textContent = 'Kiểm tra địa chỉ website và chọn Có trên cửa sổ TT ESPStudio Agent. Không cần nhập mã.';
-      await compiler.finishNativePairing(request); await connectBridge(); return;
+      notify('Chọn Có trên cửa sổ Agent để kết nối Compiler.');
+      await compiler.finishNativePairing(request); await connectBridge(); if(token)notify('Compiler đã kết nối.'); return;
     }
+    ide?.showDialog('settings-dialog');
     $('agent-pair-form').hidden = false; $('agent-message').textContent = 'Kiểm tra đúng địa chỉ website trên cửa sổ Agent rồi nhập mã tại đây.';
     $<HTMLInputElement>('agent-pair-code').focus();
   } catch (error) {
-    $('agent-message').textContent = describeError(error);
+    $('agent-message').textContent = describeError(error);notify(describeError(error),true);
     // Show the launch fallback only when the Agent cannot be reached, not after denial.
     launchAgent.hidden = !compiler.isAgent || reachable;
   } finally { connectingCompiler = false; syncButtons(); }
@@ -78,7 +92,7 @@ $('agent-pair-form').onsubmit = async event => {
 $('agent-unpair').onclick = async () => {
   if (busy) return notify('Chờ tác vụ hiện tại kết thúc trước khi ngắt ghép nối.', true);
   try { await compiler.disconnect(); } catch { /* local session is cleared even offline */ }
-  token = ''; lastBuild = null; $('bridge-state').textContent = 'Agent chưa ghép nối'; $('agent-message').textContent = 'Đã xóa phiên ghép nối trên web.'; syncButtons();
+  token = ''; lastBuild = null; notify('Đã ngắt kết nối Compiler.'); $('bridge-state').textContent = 'Agent chưa ghép nối'; $('agent-message').textContent = 'Đã xóa phiên ghép nối trên web.'; syncButtons();
 };
 cancelButton.onclick = async () => { try { if (activeJob) await compiler.request('cancel', { jobId: activeJob }); } catch (error) { notify(describeError(error), true); } };
 const codeHighlight = document.createElement('div');
@@ -101,6 +115,7 @@ let lastBuild: { id: string; fingerprint: string } | null = null;
 let currentView = 'program';
 let buildAction: 'build' | 'upload' = 'upload';
 ide = initIde(workspace, codeArea, notify);
+$('settings').onclick=()=>{if(token)$('agent-unpair').click();else void connectCompiler()};
 let configPending = false;
 const draftStatus = document.createElement('div'); draftStatus.className = 'info'; draftStatus.hidden = true;
 draftStatus.innerHTML = 'Cấu hình đang là bản nháp, chưa dùng để biên dịch/nạp. Áp dụng cấu hình hoặc <button type="button" id="discard-config">Bỏ bản nháp</button>';
@@ -137,7 +152,10 @@ function syncButtons() {
   $('build-label').textContent = phase === 'confirmation' ? 'Chờ xác nhận trên Agent…' : phase === 'building' ? 'Đang biên dịch…' : phase === 'uploading' ? 'Đang nạp…' : buildAction === 'upload' ? 'Biên dịch và nạp' : 'Chỉ biên dịch';
   $('upload-consent-status').hidden = phase !== 'confirmation';
   $('settings').classList.toggle('connected', !!token);
-  $('settings').title = token ? 'Compiler đã kết nối' : 'Compiler chưa kết nối';
+  $('settings').title = connectingCompiler ? 'Đang kết nối Compiler…' : token ? 'Ngắt kết nối Compiler' : 'Kết nối Compiler';
+  $<HTMLButtonElement>('settings').disabled=connectingCompiler||busy;
+  $('settings').setAttribute('aria-busy',String(connectingCompiler));
+  $('settings').setAttribute('aria-pressed',String(!!token));
   $('settings').setAttribute('data-connected', String(!!token));
   serialMonitor?.setLocked(phase === 'confirmation' || phase === 'uploading');
   $('build').setAttribute('data-agent-ready',String(!!token));
@@ -372,7 +390,7 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') clos
 document.querySelectorAll<HTMLButtonElement>('[data-build-action]').forEach(button => button.onclick = () => { buildAction = button.dataset.buildAction as 'build'|'upload'; closeBuildMenu(); syncButtons(); });
 $('build').onclick = async () => {
   closeBuildMenu();
-  if (!token) { ide?.showDialog('settings-dialog'); notify('Cần ghép nối Agent trước khi biên dịch.'); return; }
+  if (!token) { notify('Bấm Compiler trên thanh công cụ để kết nối.'); return; }
   const action = buildAction;
   if (action === 'upload') { try { await resolveDevice(); } catch (error) { notify(describeError(error), true); return; } }
   const port = uploadPort?.port; const deviceRevision = serialMonitor?.revision;

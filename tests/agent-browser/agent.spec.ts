@@ -19,9 +19,8 @@ test('static web editor works offline, pairs with real agent and handles expiry'
   let buildRequests = 0;
   page.on('request', request => { if (request.url().endsWith('/build')) buildRequests++; });
   await page.locator('#build').click();
-  await expect(page.locator('#settings-dialog')).toBeVisible();
+  await expect(page.locator('#settings-dialog')).not.toBeVisible();
   expect(buildRequests).toBe(0);
-  await page.locator('[data-close="settings-dialog"]').click();
   await page.locator('#code-mode').click(); await expect(page.locator('#code')).toBeEditable();
   await page.locator('#code').fill('// online editor without compiler\nvoid setup() {}\nvoid loop() {}');
   await page.reload(); await expect(page.locator('#code')).toHaveValue(/online editor without compiler/);
@@ -30,24 +29,33 @@ test('static web editor works offline, pairs with real agent and handles expiry'
   const agent = createAgent({ port: agentPort, root, origins: new Set([new URL(baseURL!).origin]), ready: () => true, announce: (_, value) => { code = value; } });
   await new Promise<void>((resolve, reject) => { agent.server.once('error', reject); agent.server.listen(agentPort, '127.0.0.1', resolve); });
   try {
-    await page.locator('#settings').click(); await page.locator('#agent-connect').click();
+    await page.locator('#settings').click();
     await expect(page.locator('#agent-pair-request')).toHaveCount(0);
     await expect(page.locator('#agent-pair-form')).toBeVisible();
     expect(code).toMatch(/^\d{8}$/);
     await page.locator('#agent-pair-code').fill(code);
     await page.locator('#agent-pair-form button').click();
     await expect(page.locator('#bridge-state')).toContainText('Agent đã ghép nối');
-    await expect(page.locator('#notice')).toBeHidden();
+    await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
     await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
     await expect(page.locator('#agent-connect')).toBeHidden();
-    await expect(page.locator('#agent-unpair')).toBeVisible();
+    await expect(page.locator('#settings')).toHaveAttribute('aria-pressed','true');
     await page.reload(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
-    await page.locator('#settings').click();
-    await page.locator('#agent-unpair').click(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'false');
+    await page.locator('#settings').click(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'false');
   } finally { await new Promise<void>(resolve => agent.server.close(() => resolve())); }
 });
 
 test('native pairing UI waits for local approval and reconnects without typing a code', async ({ page, baseURL }) => {
+  // Simulate an Agent still starting; intercept the OS protocol so the test
+  // never opens or changes the owner's installed Agent.
+  let healthChecks=0;
+  await page.route(`http://127.0.0.1:${agentPort}/api/health`,route=>++healthChecks<=2?route.abort():route.continue());
+  await page.addInitScript(()=>{
+    (window as any).__agentLaunches=0;
+    document.addEventListener('click',event=>{
+      if((event.target as Element).closest('a[href="ttespstudio://connect"]')){event.preventDefault();(window as any).__agentLaunches++;}
+    },true);
+  });
   let approve!: (value: boolean) => void;
   const root = await mkdtemp(path.join(tmpdir(), 'esp-native-browser-'));
   const agent = createAgent({ port: agentPort, root, origins: new Set([new URL(baseURL!).origin]), ready: () => true,
@@ -56,13 +64,14 @@ test('native pairing UI waits for local approval and reconnects without typing a
   });
   await new Promise<void>((resolve, reject) => { agent.server.once('error', reject); agent.server.listen(agentPort, '127.0.0.1', resolve); });
   try {
-    await page.goto('./'); await page.locator('#settings').click(); await page.locator('#agent-connect').click();
-    await expect(page.locator('#agent-message')).toContainText('chọn Có');
+    await page.goto('./'); await page.locator('#settings').click();
+    await expect(page.locator('#notice')).toContainText('Chọn Có');await expect(page.locator('#settings-dialog')).not.toBeVisible();
+    expect(await page.evaluate(()=>(window as any).__agentLaunches)).toBe(1);
     await expect(page.locator('#agent-pair-form')).toBeHidden(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'false');
     approve(true);
-    await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true'); await expect(page.locator('#notice')).toBeHidden();
+    await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true'); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
     await page.reload(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
-    await page.locator('#settings').click(); await page.locator('#agent-unpair').click();
+    await page.locator('#settings').click();
     await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'false');
   } finally { await new Promise<void>(resolve => agent.server.close(() => resolve())); }
 });
@@ -75,7 +84,7 @@ test('real S3 firmware builds through static web and authenticated agent; broken
   const agent = createAgent({ port: agentPort, root, origins: new Set([new URL(baseURL!).origin]), ready: () => true, announce: (_, value) => { code = value; } });
   await new Promise<void>((resolve, reject) => { agent.server.once('error', reject); agent.server.listen(agentPort, '127.0.0.1', resolve); });
   try {
-    await page.goto('./'); await page.locator('#settings').click(); await page.locator('#agent-connect').click();
+    await page.goto('./'); await page.locator('#settings').click();
     await expect(page.locator('#agent-pair-form')).toBeVisible();
     await page.locator('#agent-pair-code').fill(code); await page.locator('#agent-pair-form button').click();
     await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
