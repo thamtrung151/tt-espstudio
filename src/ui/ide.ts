@@ -1,13 +1,14 @@
 import { Blockly, localizeBlocks } from '../blocks';
+import { initWhiteboard } from './whiteboard';
 import { icon } from './icons';
 import { t, onLocaleChange } from './i18n';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const prefKey = 'tt-espstudio.ui.v1';
+const prefKey = 'tt-espstudio.ui.v2';
 type Preferences = { ratio: number; collapsed: boolean; monitorHeight: number; theme: 'dark' | 'light' };
 function readPreferences(): Preferences {
   let value: Partial<Preferences> = {};
   try { value = JSON.parse(localStorage.getItem(prefKey) ?? '{}') ?? {}; } catch { /* Defaults; project remains separate. */ }
-  return { ratio: typeof value.ratio === 'number' ? Math.max(25,Math.min(75,value.ratio)) : 59, collapsed: value.collapsed === true, monitorHeight: typeof value.monitorHeight === 'number' ? Math.max(100,Math.min(300,value.monitorHeight)) : 154, theme: value.theme === 'light' ? 'light' : 'dark' };
+  return { ratio: typeof value.ratio === 'number' ? Math.max(25,Math.min(85,value.ratio)) : 78, collapsed: value.collapsed === true, monitorHeight: typeof value.monitorHeight === 'number' ? Math.max(100,Math.min(300,value.monitorHeight)) : 154, theme: value.theme === 'light' ? 'light' : 'dark' };
 }
 export function highlightCpp(code: string): string {
   const escape = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -35,7 +36,7 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   };
   function setFocus(mode: 'blocks'|'code', changeRatio=true) {
     document.querySelector('.ide')!.classList.toggle('code-focus',mode==='code');
-    if (changeRatio) preferences.ratio=mode==='blocks'?59:35;
+    if (changeRatio) preferences.ratio=mode==='blocks'?78:35;
     apply();
   }
   function showMonitor(tab: 'serial'|'build', expand=true) {
@@ -51,13 +52,13 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
     el.onpointermove=e=>{if(el.hasPointerCapture(e.pointerId)){update(e);apply()}};
     const end=()=>{document.body.classList.remove('resizing');save()}; el.onpointerup=end;el.onlostpointercapture=end;
   }
-  dragDivider('pane-divider',e=>{const box=$('editors').getBoundingClientRect();preferences.ratio=Math.max(25,Math.min(75,100*(e.clientX-box.left)/box.width))});
+  dragDivider('pane-divider',e=>{const box=$('editors').getBoundingClientRect();preferences.ratio=Math.max(25,Math.min(85,100*(e.clientX-box.left)/box.width))});
   dragDivider('monitor-divider',e=>{const box=$('monitor').getBoundingClientRect();preferences.monitorHeight=Math.max(100,Math.min(innerHeight*.4,box.bottom-e.clientY));preferences.collapsed=false});
-  $('pane-divider').onkeydown=e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();preferences.ratio=Math.max(25,Math.min(75,preferences.ratio+(e.key==='ArrowRight'?3:-3)));apply()}};
+  $('pane-divider').onkeydown=e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();preferences.ratio=Math.max(25,Math.min(85,preferences.ratio+(e.key==='ArrowRight'?3:-3)));apply()}};
   $('monitor-divider').onkeydown=e=>{if(['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();preferences.monitorHeight=Math.max(100,Math.min(300,preferences.monitorHeight+(e.key==='ArrowUp'?20:-20)));apply()}};
   const observer=new ResizeObserver(()=>requestAnimationFrame(resize));observer.observe($('blockly'));
   const zoomLabel=()=>{$('zoom-level').textContent=Math.round(workspace.scale*100)+'%'};
-  for(const [id,action] of Object.entries({'zoom-fit':()=>workspace.zoomToFit(),'zoom-center':()=>workspace.scrollCenter(),'zoom-in':()=>workspace.zoomCenter(1),'zoom-out':()=>workspace.zoomCenter(-1)})) $(id).onclick=()=>{action();zoomLabel()};
+  for(const [id,action] of Object.entries({'zoom-fit':()=>workspace.zoomToFit(),'zoom-center':()=>workspace.scrollCenter()})) $(id).onclick=()=>{action();zoomLabel()};
   workspace.addChangeListener(zoomLabel);
   const groups=[
     {name:'Chương trình',color:'#d9951b',symbol:'blocks',blocks:['robot_setup','robot_loop','robot_repeat','robot_wait'],search:'setup loop repeat wait chờ lặp khởi động'},
@@ -102,6 +103,7 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   code.addEventListener('keydown',event=>{if(event.key==='Tab'&&!code.readOnly){event.preventDefault();code.setRangeText('  ',code.selectionStart,code.selectionEnd,'end');code.dispatchEvent(new Event('input',{bubbles:true}))}});
   onLocaleChange(()=>{groups.forEach((g,i)=>{const button=$('block-categories').children[i] as HTMLElement;button.title=t(g.name)});localizeBlocks(workspace);if(flyout)localizeBlocks(flyout.getWorkspace())});
   workspace.addChangeListener(event=>{if(event.type===Blockly.Events.BLOCK_CREATE)localizeBlocks(workspace)});
+  initWhiteboard(workspace);
   showMonitor(monitorTab,false);apply();zoomLabel();renderCode();
   return {setFocus,showMonitor,renderCode,showDialog,resize};
 }

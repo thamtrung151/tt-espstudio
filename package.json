@@ -1,13 +1,13 @@
 {
   "name": "tt-espstudio",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
-    "test": "vitest run tests/core.test.ts tests/service.test.ts tests/robotics.test.ts tests/agent.test.ts tests/targets.test.ts tests/lifecycle.test.ts",
+    "test": "vitest run",
     "test:browser": "playwright test",
     "firmware:example": "tsx scripts/export-example.ts",
     "firmware:robotics": "tsx scripts/export-robotics.ts",

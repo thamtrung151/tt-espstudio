@@ -5,6 +5,24 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+  "Bấm Compiler để ghép nối. Bấm Chọn thiết bị rồi chọn board trong hộp của Chrome. Studio tự đối chiếu cổng nạp, tạm đóng Serial khi nạp và thử mở lại sau đó.":"Click Compiler to pair. Click Select device and choose your board in Chrome. Studio identifies its upload port, pauses Serial for upload and tries to reopen it afterward.",
+  "Biên dịch thành công. Chọn thiết bị trên thanh công cụ; mở menu biên dịch để nạp bản vừa tạo.":"Build successful. Select a device in the toolbar; use the build menu to upload this build.",
+  "Đã nạp firmware. Nhấn RST để chạy chương trình, rồi chọn lại thiết bị nếu COM thay đổi.":"Firmware uploaded. Press RST to run the program, then select the device again if COM changed.",
+  "Nạp thành công. Kiểm tra chương trình trên board; nếu USB đổi cổng, chọn lại thiết bị để dùng Serial.":"Upload successful. Check the program on the board; if USB changes ports, select the device again for Serial.",
+  "Chọn thiết bị":"Select device",
+  "Thiết bị Serial":"Serial device",
+  "Bấm để chọn thiết bị khác":"Click to choose another device",
+  "Serial tạm đóng để nạp":"Serial paused for upload",
+  "Ngắt kết nối thiết bị":"Disconnect device",
+  "Compiler đã kết nối":"Compiler connected",
+  "Compiler chưa kết nối":"Compiler disconnected",
+  "Chờ xác nhận trên Agent…":"Awaiting Agent approval…",
+  "Chờ xác nhận trên Agent… Kiểm tra cửa sổ TT ESPStudio Agent và chọn Có để nạp.":"Waiting for Agent approval. Check the TT ESPStudio Agent window and choose Yes to upload.",
+  "Bấm Chọn thiết bị trước khi nạp.":"Click Select device before uploading.",
+  "Thiết bị đã thay đổi. Hãy chọn lại thiết bị.":"The device changed. Select the device again.",
+  "Có nhiều thiết bị USB cùng loại. Chỉ giữ board cần nạp rồi bấm Chọn thiết bị để đối chiếu lại.":"Multiple identical USB devices found. Keep only the board to upload, then click Select device again.",
+  "Chưa tìm được cổng COM của thiết bị đã chọn. Kiểm tra USB, driver và Compiler rồi chọn lại thiết bị.":"Could not identify the selected device’s COM port. Check USB, its driver and Compiler, then select again.",
+  "Serial chưa mở lại được sau nạp. Nhấn RST nếu cần rồi bấm Chọn thiết bị.":"Could not reopen Serial after upload. Press RST if needed, then click Select device.",
   'Biên dịch thành công. Chọn cổng nạp trên thanh công cụ; mở menu biên dịch để nạp bản vừa tạo.':'Build successful. Select an upload port in the toolbar and use the build menu to upload this build.',
   'Biên dịch thất bại. Xem nhật ký biên dịch.':'Build failed. See Build log.',
   'Biên dịch thất bại. Chi tiết từ toolchain nằm trong nhật ký biên dịch.':'Build failed. See toolchain details in Build log.',
@@ -71,7 +89,7 @@ export function initLocale(){
   const attributes=new WeakMap<Element,Map<string,{original:string,last:string}>>();
   const reverse=new Map(Object.entries(en).map(([a,b])=>[b,a]));
   // Only UI text is translated. Source, logs, JSON, names and input values are data.
-  const excluded='#blockly, #code-render, #line-numbers, #serial-log, #build-log, #board-name, #ports option:not([value=""]), textarea, script, style';
+  const excluded='#blockly, #code-render, #line-numbers, #serial-log, #build-log, #board-name, #serial-connect, #ports option:not([value=""]), textarea, script, style';
   const translate=()=>{
     observer.disconnect();
     const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);

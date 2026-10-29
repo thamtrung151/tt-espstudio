@@ -2,6 +2,7 @@ import './ui/ide.css';
 import { shell } from './ui/shell';
 import { initIde } from './ui/ide';
 import { SerialMonitor } from './ui/serial';
+import { matchingPorts, portLabel, type AgentPort } from './ui/device-port';
 import { t, initLocale } from './ui/i18n';
 import { compiler } from './compiler';
 import { zipSync, strToU8 } from 'fflate';
@@ -24,6 +25,10 @@ setDevices(project.config.devices);
 document.querySelector('#app')!.innerHTML = shell();
 const codeArea = $<HTMLTextAreaElement>('code');
 let ide: ReturnType<typeof initIde> | undefined;
+let serialMonitor: SerialMonitor | undefined;
+let uploadPort: AgentPort | null = null;
+let mappingInvalid = false;
+let phase: 'building' | 'confirmation' | 'uploading' | null = null;
 // Keep the selector aligned with the schema/build profiles for every chip family.
 $<HTMLSelectElement>('config-target').replaceChildren(...Object.entries(targets).map(([id, target]) => new Option(target.label, id)));
 const connectButton = document.createElement('button'); connectButton.id = 'agent-connect'; connectButton.textContent = 'Kết nối compiler'; connectButton.className = 'quiet';
@@ -82,7 +87,7 @@ function paintCodeRange() {
 }
 codeArea.addEventListener('scroll', paintCodeRange);
 new ResizeObserver(paintCodeRange).observe(codeArea);
-const workspace = Blockly.inject('blockly', { toolbox, trashcan: true, grid: { spacing: 22, length: 1, colour: '#d7e1e2', snap: true }, zoom: { controls: false, wheel: true, startScale: 1.12, maxScale: 2, minScale: 0.4 }, move: { scrollbars: true, drag: true, wheel: true }, sounds: false });
+const workspace = Blockly.inject('blockly', { toolbox, trashcan: true, grid: { spacing: 22, length: 1, colour: '#d7e1e2', snap: true }, zoom: { controls: false, wheel: true, startScale: 1.05, maxScale: 4, minScale: 0.4 }, move: { scrollbars: true, drag: true, wheel: false }, sounds: false });
 let generated: Generated | null = null; let generationError = ''; let suppressEvents = true; let busy = false; let token = '';
 let lastBuild: { id: string; fingerprint: string } | null = null;
 let currentView = 'program';
@@ -111,8 +116,13 @@ function fingerprint() { return JSON.stringify({ config: project.config, code: p
 function syncButtons() {
   const configMode = project.mode === 'code';
   $<HTMLButtonElement>('build').disabled = busy || !!generationError || configPending;
-  $<HTMLButtonElement>('upload').disabled = busy || !token || !!generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !$<HTMLSelectElement>('ports').value;
-  $('build-label').textContent = busy ? 'Đang xử lý…' : buildAction === 'upload' ? 'Biên dịch và nạp' : 'Chỉ biên dịch';
+  $<HTMLButtonElement>('upload').disabled = busy || !token || !!generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !uploadPort;
+  $('build-label').textContent = phase === 'confirmation' ? 'Chờ xác nhận trên Agent…' : phase === 'building' ? 'Đang biên dịch…' : phase === 'uploading' ? 'Đang nạp…' : buildAction === 'upload' ? 'Biên dịch và nạp' : 'Chỉ biên dịch';
+  $('upload-consent-status').hidden = phase !== 'confirmation';
+  $('settings').classList.toggle('connected', !!token);
+  $('settings').title = token ? 'Compiler đã kết nối' : 'Compiler chưa kết nối';
+  $('settings').setAttribute('data-connected', String(!!token));
+  serialMonitor?.setLocked(phase === 'confirmation' || phase === 'uploading');
   $('build').setAttribute('data-agent-ready',String(!!token));
   $('blocks-mode').setAttribute('aria-pressed',String(!configMode)); $('code-mode').setAttribute('aria-pressed',String(configMode));
   ide?.setFocus(configMode ? 'code' : 'blocks', false);
@@ -299,12 +309,14 @@ async function connectBridge() {
     token = compiler.token; $('bridge-state').textContent = compiler.isAgent ? '● Agent đã ghép nối' : '● Bridge sẵn sàng'; $('agent-message').textContent = 'Compiler đã kết nối và sẵn sàng.';
     if (bridgeNotice && $('notice').dataset.message === bridgeNotice) $('notice').hidden = true;
     bridgeNotice = '';
+    if (serialMonitor?.info && !busy) void resolveDevice().catch(error => notify(describeError(error), true));
   }
   catch (error) { token = ''; lastBuild = null; $('bridge-state').textContent = compiler.isAgent ? 'Agent chưa sẵn sàng' : 'Bridge chưa chạy'; $('agent-message').textContent = describeError(error); if (!startupError) { bridgeNotice = compiler.isAgent ? `Chưa thể build/nạp: ${describeError(error)} Trình soạn thảo vẫn hoạt động.` : 'Chạy Start-ESPStudio.cmd để bật build/upload cục bộ. Trình soạn thảo vẫn hoạt động.'; notify(bridgeNotice); } }
   syncButtons();
 }
 type Job = { diagnostic?: string; id: string; status: 'running' | 'success' | 'error' | 'cancelled'; log: string; kind: string };
 async function watchJob(job: Job) {
+  phase = job.kind === 'upload' ? 'uploading' : 'building'; syncButtons();
   activeJob = job.id; cancelButton.hidden = !compiler.isAgent || job.kind !== 'build';
   try {
   while (true) {
@@ -319,14 +331,14 @@ async function buildFirmware(): Promise<boolean> {
   if (compiler.isAgent && !compiler.usbConfiguration && (project.config.board.serialTransport || project.config.board.uploadReset)) { notify('Cấu hình USB/reset cần Agent preview.4 trở lên. Cài và mở bản mới rồi ghép nối lại.', true); return false; }
   if (compiler.isAgent && !compiler.supportedTargets.includes(project.config.board.target)) { notify('Agent đang kết nối chưa hỗ trợ chip này. Cài và mở bản Agent mới rồi kết nối lại.', true); return false; }
   if (project.mode === 'blocks') refreshCode();
-  if (generationError || configPending || busy) return false; busy = true; lastBuild = null; syncButtons(); const submitted = fingerprint();
+  if (generationError || configPending || busy) return false; busy = true; phase = 'building'; lastBuild = null; syncButtons(); const submitted = fingerprint();
   ide?.showMonitor('build');
   try {
     const result = await watchJob(await api('build', { config: project.config, code: project.code }));
-    if (result.status === 'success') { lastBuild = { id: result.id, fingerprint: submitted }; $('build-state').textContent = 'Build thành công. Chọn cổng để nạp firmware.'; notify('Biên dịch thành công. Chọn cổng nạp trên thanh công cụ; mở menu biên dịch để nạp bản vừa tạo.'); return true; }
+    if (result.status === 'success') { lastBuild = { id: result.id, fingerprint: submitted }; $('build-state').textContent = 'Build thành công. Chọn cổng để nạp firmware.'; notify('Biên dịch thành công. Chọn thiết bị trên thanh công cụ; mở menu biên dịch để nạp bản vừa tạo.'); return true; }
     else { $('build-state').textContent = 'Biên dịch thất bại. Xem nhật ký biên dịch.'; notify('Biên dịch thất bại. Chi tiết từ toolchain nằm trong nhật ký biên dịch.', true); }
   } catch (error) { notify(describeError(error), true); }
-  finally { busy = false; syncButtons(); }
+  finally { busy = false; phase = null; syncButtons(); }
   return false;
 }
 function closeBuildMenu() { $('build-menu').hidden = true; $('build-options').setAttribute('aria-expanded','false'); }
@@ -337,33 +349,59 @@ document.querySelectorAll<HTMLButtonElement>('[data-build-action]').forEach(butt
 $('build').onclick = async () => {
   closeBuildMenu();
   if (!token) { ide?.showDialog('settings-dialog'); notify('Cần ghép nối Agent trước khi biên dịch.'); return; }
-  const action = buildAction; const port = $<HTMLSelectElement>('ports').value;
-  if (action === 'upload' && !port) { notify('Chọn cổng nạp trước khi biên dịch và nạp.', true); $('ports').focus(); return; }
+  const action = buildAction;
+  if (action === 'upload') { try { await resolveDevice(); } catch (error) { notify(describeError(error), true); return; } }
+  const port = uploadPort?.port; const deviceRevision = serialMonitor?.revision;
   const submitted = fingerprint();
   if (!await buildFirmware() || action !== 'upload') return;
-  if (submitted !== fingerprint() || port !== $<HTMLSelectElement>('ports').value || configPending) { notify('Chương trình hoặc cổng đã thay đổi. Hãy biên dịch và nạp lại bản hiện tại.', true); return; }
+  if (submitted !== fingerprint() || port !== uploadPort?.port || deviceRevision !== serialMonitor?.revision || configPending) { notify('Chương trình hoặc cổng đã thay đổi. Hãy biên dịch và nạp lại bản hiện tại.', true); return; }
   await uploadFirmware();
 };
-$('refresh-ports').onclick = async () => {
-  try { if (!token) { ide?.showDialog('settings-dialog'); await connectBridge(); if (!token) { notify('Ghép Agent để quét cổng nạp. Kết nối Serial dùng hộp chọn cổng của trình duyệt.'); return; } } const ports = await api('ports') as { port: string; description?: string }[]; const select = $<HTMLSelectElement>('ports'); select.replaceChildren(new Option('Chọn đúng cổng ESP32…', '')); for (const p of ports) select.add(new Option(`${p.port} · ${p.description ?? 'Serial'}`, p.port)); notify(ports.length ? 'Đã cập nhật danh sách cổng. Chọn đúng board của bạn.' : 'Chưa tìm thấy cổng serial. Kiểm tra USB và driver.'); syncButtons(); }
-  catch (error) { notify(describeError(error), true); }
-};
-$('ports').onchange = syncButtons;
+async function resolveDevice(): Promise<AgentPort> {
+  if (mappingInvalid) throw new Error('Thiết bị đã thay đổi. Hãy chọn lại thiết bị.');
+  const info = serialMonitor?.info; const revision = serialMonitor?.revision;
+  if (!info) throw new Error('Bấm Chọn thiết bị trước khi nạp.');
+  const ports = await api('ports') as AgentPort[];
+  if (revision !== serialMonitor?.revision) throw new Error('Thiết bị đã thay đổi. Hãy chọn lại thiết bị.');
+  const matches = matchingPorts(info, ports);
+  if (matches.length !== 1) {
+    uploadPort = null; serialMonitor?.setLabel(''); syncButtons();
+    throw new Error(matches.length > 1 ? 'Có nhiều thiết bị USB cùng loại. Chỉ giữ board cần nạp rồi bấm Chọn thiết bị để đối chiếu lại.' : 'Chưa tìm được cổng COM của thiết bị đã chọn. Kiểm tra USB, driver và Compiler rồi chọn lại thiết bị.');
+  }
+  const previous = uploadPort; uploadPort = matches[0];
+  serialMonitor?.setLabel(portLabel(uploadPort)); syncButtons();
+  if (previous && (previous.port !== uploadPort.port || previous.hwid !== uploadPort.hwid)) {
+    mappingInvalid = true;
+    uploadPort = null; serialMonitor?.setLabel(''); syncButtons();
+    throw new Error('Thiết bị đã thay đổi. Hãy chọn lại thiết bị.');
+  }
+  return uploadPort;
+}
 async function uploadFirmware() {
   closeBuildMenu(); ide?.showMonitor('build');
-  const port = $<HTMLSelectElement>('ports').value;
+  const port = uploadPort?.port;
   if (generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !port || busy) return;
+  const buildId = lastBuild.id; const revision = serialMonitor?.revision;
+  try { await resolveDevice(); } catch (error) { notify(describeError(error), true); return; }
+  if (!lastBuild || lastBuild.id !== buildId || lastBuild.fingerprint !== fingerprint() || revision !== serialMonitor?.revision || configPending || busy) return;
   if (!compiler.nativeUploadConsent && !confirm(t(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`))) return;
   if (compiler.nativeUploadConsent) notify('Kiểm tra board/cổng và xác nhận nạp trên cửa sổ TT ESPStudio Agent.');
-  busy = true; syncButtons();
-  try { await disconnectSerial(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); const message = result.status === 'success' ? (project.config.board.uploadReset === 'manual' ? 'Đã nạp firmware. Nhấn RST để chạy chương trình, rồi quét/chọn lại cổng nếu COM thay đổi.' : 'Nạp thành công. Kiểm tra chương trình trên board; nếu USB đổi cổng, quét/chọn lại COM để dùng Serial.') : result.diagnostic ?? 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.'; $('build-state').textContent = message; notify(message, result.status !== 'success'); }
+  busy = true; phase = compiler.nativeUploadConsent ? 'confirmation' : 'uploading'; syncButtons();
+  try { await serialMonitor?.suspend(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); const message = result.status === 'success' ? (project.config.board.uploadReset === 'manual' ? 'Đã nạp firmware. Nhấn RST để chạy chương trình, rồi chọn lại thiết bị nếu COM thay đổi.' : 'Nạp thành công. Kiểm tra chương trình trên board; nếu USB đổi cổng, chọn lại thiết bị để dùng Serial.') : result.diagnostic ?? 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.'; $('build-state').textContent = message; notify(message, result.status !== 'success'); }
   catch (error) { notify(describeError(error), true); }
-  finally { busy = false; syncButtons(); }
+  finally { phase = null; await serialMonitor?.resume(); busy = false; syncButtons(); }
 };
 $('upload').onclick = () => void uploadFirmware();
 $('clear-log').onclick = () => { $('build-log').textContent = ''; };
-const serialMonitor = new SerialMonitor(notify, () => ide?.showMonitor('serial'));
-async function disconnectSerial() { await serialMonitor.disconnect(); }
+serialMonitor = new SerialMonitor(notify, () => ide?.showMonitor('serial'), () => {
+  uploadPort = null; mappingInvalid = false; syncButtons();
+  if (token && serialMonitor?.info && !busy) void resolveDevice().catch(error => notify(describeError(error), true));
+});
+// An expired or stopped Agent must not leave a green Compiler badge.
+setInterval(() => {
+  if (!token || busy || document.hidden) return;
+  void compiler.request('session').catch(() => { token = ''; lastBuild = null; syncButtons(); });
+}, 15000);
 window.addEventListener('resize', () => { if (currentView === 'program') Blockly.svgResize(workspace); });
 renderConfig(); refreshCode();
 requestAnimationFrame(() => { if (innerWidth <= 800) workspace.zoomToFit(); else workspace.scrollCenter(); });

@@ -1,3 +1,4 @@
+import { mockSerial } from './serial-mock';
 import {test,expect,type Page} from '@playwright/test';
 
 test('C++ header changes ownership and pane priority; returning preserves history',async({page})=>{
@@ -24,7 +25,7 @@ test('splitters, drawer and locale do not change project; Blockly drag still wor
   await page.mouse.move(divider!.x+5,divider!.y+70);await page.mouse.down();await page.mouse.move(divider!.x-140,divider!.y+70,{steps:10});await page.mouse.up();
   await page.locator('#monitor-toggle').click();await expect(page.locator('#monitor-content')).toBeHidden();
   await page.locator('#locale-en').click();await expect(page.locator('#build-label')).toHaveText('Build & upload');
-  await expect(page.locator('#usb-state')).toContainText('Not connected');
+  await expect(page.locator('#serial-connect-label')).toHaveText('Select device');
   expect(await getProject()).toBe(saved);
   await page.reload();await expect(page.locator('#monitor-content')).toBeHidden();await expect(page.locator('#locale-en')).toHaveAttribute('aria-pressed','true');
   await page.locator('#locale-vi').click();
@@ -43,14 +44,15 @@ test('real palette search creates usable flyout blocks; placeholders are explici
 });
 
 async function mockedCompiler(page:Page, result:'success'|'error'='success', pending=false){
+  await mockSerial(page);
   let builds=0,uploads=0,finished=!pending;const events:string[]=[];
-  await page.route('**/api/ports',route=>route.fulfill({json:[{port:'COM_TEST',description:'Test-only mock'},{port:'COM_OTHER'}]}));
+  await page.route('**/api/ports',route=>route.fulfill({json:[{port:'COM_TEST',description:'Test-only mock',hwid:'USB VID:PID=10C4:EA60 SER=one'},{port:'COM_OTHER',hwid:'USB VID:PID=10C4:EA61 SER=two'}]}));
   await page.route('**/api/build',route=>{builds++;events.push('build');return route.fulfill({json:{id:'test-build',kind:'build',status:'running',log:'test build'}})});
   await page.route('**/api/jobs/test-build',route=>route.fulfill({json:{id:'test-build',kind:'build',status:finished?result:'running',log:finished?result:'test build'}}));
   await page.route('**/api/upload',route=>{uploads++;events.push('upload');return route.fulfill({json:{id:'test-upload',kind:'upload',status:'success',log:'test upload'}})});
   page.on('dialog',dialog=>dialog.accept());
   await page.goto('/');await expect(page.locator('#build')).toHaveAttribute('data-agent-ready','true');
-  await page.locator('#refresh-ports').click();await page.locator('#ports').selectOption('COM_TEST');
+  await page.locator('#serial-connect').click();await expect(page.locator('#serial-connect-label')).toContainText('COM_TEST');
   return {builds:()=>builds,uploads:()=>uploads,events,finish:()=>{finished=true}};
 }
 test('build only never uploads; build and upload waits for success',async({page})=>{
@@ -71,21 +73,16 @@ test('changes while building cannot upload stale firmware',async({page})=>{
 });
 test('changing the selected port during build cannot redirect an upload',async({page})=>{
   const service=await mockedCompiler(page,'success',true);await page.locator('#build').click();await expect.poll(service.builds).toBe(1);
-  await page.locator('#ports').selectOption('COM_OTHER');service.finish();await expect(page.locator('#notice')).toContainText('cổng đã thay đổi');expect(service.uploads()).toBe(0);
+  await page.evaluate(()=>(window as any).__serialTest.pid=0xea61);await page.locator('#serial-connect').click();await expect(page.locator('#serial-connect-label')).not.toContainText('COM_TEST');service.finish();await expect(page.locator('#notice')).toContainText('cổng đã thay đổi');expect(service.uploads()).toBe(0);
 });
 test('serial display, send, pause, save and upload port release use real API state',async({page})=>{
-  await page.addInitScript(()=>{
-    let controller:ReadableStreamDefaultController<Uint8Array>;const state={opened:false,closed:false,sent:'',emit:(text:string)=>controller.enqueue(new TextEncoder().encode(text))};
-    (window as any).__serialTest=state;
-    Object.defineProperty(navigator,'serial',{configurable:true,value:{requestPort:async()=>({readable:new ReadableStream<Uint8Array>({start(c){controller=c}}),writable:new WritableStream<Uint8Array>({write(data){state.sent+=new TextDecoder().decode(data)}}),open:async()=>{state.opened=true},close:async()=>{state.closed=true}})}});
-  });
-  const service=await mockedCompiler(page);await page.locator('#serial-connect').click();await expect(page.locator('#usb-state')).toContainText('Serial đã kết nối');
+  const service=await mockedCompiler(page);await expect(page.locator('#serial-connect')).toHaveAttribute('aria-pressed','true');
   await page.evaluate(()=>(window as any).__serialTest.emit('first\n'));await expect(page.locator('#serial-log')).toContainText('first');
   await page.locator('#serial-pause').click();await page.evaluate(()=>(window as any).__serialTest.emit('second\n'));await expect(page.locator('#serial-log')).not.toContainText('second');
   await page.locator('#serial-pause').click();await expect(page.locator('#serial-log')).toContainText('second');
   await page.locator('#serial-command').fill('test');await page.locator('#serial-send').click();expect(await page.evaluate(()=>(window as any).__serialTest.sent)).toBe('test\n');
   const download=page.waitForEvent('download');await page.locator('#serial-save').click();expect((await download).suggestedFilename()).toBe('espstudio-serial.log');
-  await page.locator('#build').click();await expect.poll(service.uploads).toBe(1);expect(await page.evaluate(()=>(window as any).__serialTest.closed)).toBe(true);await expect(page.locator('#usb-state')).toContainText('Chưa kết nối');
+  await page.locator('#build').click();await expect.poll(service.uploads).toBe(1);await expect.poll(()=>page.evaluate(()=>(window as any).__serialTest.opens)).toBe(2);expect(await page.evaluate(()=>(window as any).__serialTest.picks)).toBe(1);expect(await page.evaluate(()=>(window as any).__serialTest.closes)).toBe(1);await expect(page.locator('#serial-connect')).toHaveAttribute('aria-pressed','true');
 });
 for(const [width,height]of [[1920,1080],[1728,891],[1440,900],[1366,768],[390,844]])test(`viewport ${width}x${height} stays inside the IDE`,async({page})=>{
   await page.setViewportSize({width,height});await page.goto('/');await expect(page.locator('#code')).toHaveValue(/digitalWrite/);

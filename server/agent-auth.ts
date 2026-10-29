@@ -1,7 +1,7 @@
 import { randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export const AGENT_API_VERSION = 1;
-export const AGENT_VERSION = '0.3.0-preview.4';
+export const AGENT_VERSION = '0.4.1';
 type Pending = { id: string; code: string; expires: number; attempts: number };
 type NativePending = { origin: string; secret: string; expires: number; state: 'pending' | 'approved' | 'denied' };
 export class AgentAuth {
