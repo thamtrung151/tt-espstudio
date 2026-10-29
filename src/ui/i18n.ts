@@ -5,6 +5,10 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Nạp thành công. Đang kết nối lại Serial.":"Upload successful. Reconnecting Serial.",
+"Có nhiều cổng cùng loại đã được cấp quyền. Bấm Chọn thiết bị để xác định đúng board.":"Several authorized ports match this device type. Select the intended device.",
+"Chưa tìm lại được cổng Serial đã cấp quyền. Nếu board đang chạy, bấm Chọn thiết bị một lần để cấp quyền cho cổng USB mới.":"Could not recover the authorized Serial port. If the board is running, select the device once to grant access to its new USB port.",
+
 "Đang mở Agent. Cho phép trình duyệt mở ứng dụng nếu được hỏi.":"Opening Agent. Allow the browser to open the application if prompted.",
 "Chọn Có trên cửa sổ Agent để kết nối Compiler.":"Approve the Agent window to connect Compiler.",
 "Compiler đã kết nối.":"Compiler connected.",

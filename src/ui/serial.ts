@@ -2,6 +2,7 @@ import { t, onLocaleChange } from './i18n';
 import type { UsbIdentity } from './device-port';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 interface Port {
+  connected?: boolean;
   readable: ReadableStream<Uint8Array>|null;
   writable?: WritableStream<Uint8Array>|null;
   getInfo(): UsbIdentity;
@@ -25,7 +26,7 @@ export class SerialMonitor {
     $('serial-save').onclick=()=>{const url=URL.createObjectURL(new Blob([this.log],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='espstudio-serial.log';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
     $<HTMLFormElement>('serial-send-form').onsubmit=e=>{e.preventDefault();void this.send()};
     (navigator as any).serial?.addEventListener?.('disconnect',(event:Event)=>{
-      if(event.target===this.selected&&!this.suspended)void this.disconnect().catch(()=>this.clearSelection());
+      if(event.target===this.selected&&!this.suspended){if(this.locked)void this.disconnect().catch(()=>this.clearSelection());else void this.recover();}
     });
     onLocaleChange(()=>{this.status();if(!this.log)this.render()});this.status();
   }
@@ -69,14 +70,15 @@ export class SerialMonitor {
     this.reading=(async()=>{
       const decoder=new TextDecoder();
       try{while(true){const {value,done}=await reader.read();if(done)break;this.log=(this.log+decoder.decode(value,{stream:true})).slice(-40000);this.render()}}
-      catch(error){if(!this.disconnecting){this.log+='\n'+t('Mất kết nối Serial.')+' '+String(error);this.render();this.notify('Mất kết nối Serial. Hãy kiểm tra USB và kết nối lại.',true)}}
-      finally{reader.releaseLock();this.reader=null;if(!this.disconnecting){try{await selected.close()}catch{/* Detached. */}this.port=null;this.clearSelection()}}
+      catch(error){if(!this.disconnecting&&!this.suspended){this.log+='\n'+t('Mất kết nối Serial.')+' '+String(error);this.render()}}
+      finally{reader.releaseLock();this.reader=null;if(!this.disconnecting){try{await selected.close()}catch{/* Detached. */}this.port=null;if(!this.suspended){if(this.locked)this.clearSelection();else setTimeout(()=>void this.recover(),0)}}}
     })();
   }
-  private async closePort(){
+  private async closePort(bestEffort=false){
     this.disconnecting=true;this.status();
     try{if(this.reader)await this.reader.cancel();if(this.reading)await this.reading;if(this.port)await this.port.close();this.port=null;this.reading=null}
-    finally{this.disconnecting=false;this.status()}
+    catch(error){if(!bestEffort)throw error}
+    finally{this.port=null;this.reading=null;this.disconnecting=false;this.status()}
   }
   async disconnect(){await this.closePort();this.clearSelection()}
   async suspend(){
@@ -84,10 +86,40 @@ export class SerialMonitor {
     this.suspended=true;await this.closePort();this.status();
   }
   async resume(){
-    if(!this.suspended)return;this.suspended=false;
-    try{if(this.selected&&!this.port)await this.openPort(this.selected)}
-    catch{this.clearSelection();this.notify('Serial chưa mở lại được sau nạp. Nhấn RST nếu cần rồi bấm Chọn thiết bị.',true)}
-    finally{this.status()}
+    if(!this.suspended)return false;
+    return this.recover();
+  }
+  private async recover():Promise<boolean>{
+    if(this.connecting||!this.selected)return false;
+    this.connecting=true;this.suspended=true;this.status();
+    const original=this.selected, identity=original.getInfo();
+    const api=(navigator as Navigator & {serial?:{getPorts?():Promise<Port[]>}}).serial;
+    try{
+      await this.closePort(true);
+      const deadline=Date.now()+12000;
+      while(Date.now()<deadline){
+        // Never request new permission or substitute an arbitrary USB device.
+        const granted=api?.getPorts?await api.getPorts():[original];
+        const candidates=granted.filter(port=>{
+          if(port.connected===false)return false;
+          const info=port.getInfo();
+          return identity.usbVendorId!==undefined&&identity.usbProductId!==undefined
+            ? info.usbVendorId===identity.usbVendorId&&info.usbProductId===identity.usbProductId : port===original;
+        });
+        if(candidates.length>1)throw new Error('Có nhiều cổng cùng loại đã được cấp quyền. Bấm Chọn thiết bị để xác định đúng board.');
+        if(candidates.length===1){
+          try{
+            this.selected=candidates[0];await this.openPort(candidates[0]);
+            // CDC may disappear once more while Windows completes enumeration.
+            await new Promise(resolve=>setTimeout(resolve,350));
+            if(this.port){this.revision++;this.label='';this.changed();return true;}
+          }catch{/* Windows may still be replacing the old COM handle. */}
+        }
+        await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      throw new Error('Chưa tìm lại được cổng Serial đã cấp quyền. Nếu board đang chạy, bấm Chọn thiết bị một lần để cấp quyền cho cổng USB mới.');
+    }catch(error){this.clearSelection();this.notify(String((error as Error).message??error),true);return false}
+    finally{this.connecting=false;this.suspended=false;this.status()}
   }
   private async send(){
     const writable=this.port?.writable;if(!writable)return;
