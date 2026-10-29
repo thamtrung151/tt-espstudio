@@ -31,7 +31,7 @@ test('static web editor works offline, pairs with real agent and handles expiry'
   await new Promise<void>((resolve, reject) => { agent.server.once('error', reject); agent.server.listen(agentPort, '127.0.0.1', resolve); });
   try {
     await page.locator('#settings').click(); await page.locator('#agent-connect').click();
-    await page.locator('#agent-pair-request').click();
+    await expect(page.locator('#agent-pair-request')).toHaveCount(0);
     await expect(page.locator('#agent-pair-form')).toBeVisible();
     expect(code).toMatch(/^\d{8}$/);
     await page.locator('#agent-pair-code').fill(code);
@@ -39,6 +39,8 @@ test('static web editor works offline, pairs with real agent and handles expiry'
     await expect(page.locator('#bridge-state')).toContainText('Agent đã ghép nối');
     await expect(page.locator('#notice')).toBeHidden();
     await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
+    await expect(page.locator('#agent-connect')).toBeHidden();
+    await expect(page.locator('#agent-unpair')).toBeVisible();
     await page.reload(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
     await page.locator('#settings').click();
     await page.locator('#agent-unpair').click(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'false');
@@ -54,7 +56,7 @@ test('native pairing UI waits for local approval and reconnects without typing a
   });
   await new Promise<void>((resolve, reject) => { agent.server.once('error', reject); agent.server.listen(agentPort, '127.0.0.1', resolve); });
   try {
-    await page.goto('./'); await page.locator('#settings').click(); await page.locator('#agent-connect').click(); await page.locator('#agent-pair-request').click();
+    await page.goto('./'); await page.locator('#settings').click(); await page.locator('#agent-connect').click();
     await expect(page.locator('#agent-message')).toContainText('chọn Có');
     await expect(page.locator('#agent-pair-form')).toBeHidden(); await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'false');
     approve(true);
@@ -74,7 +76,7 @@ test('real S3 firmware builds through static web and authenticated agent; broken
   await new Promise<void>((resolve, reject) => { agent.server.once('error', reject); agent.server.listen(agentPort, '127.0.0.1', resolve); });
   try {
     await page.goto('./'); await page.locator('#settings').click(); await page.locator('#agent-connect').click();
-    await page.locator('#agent-pair-request').click(); await expect(page.locator('#agent-pair-form')).toBeVisible();
+    await expect(page.locator('#agent-pair-form')).toBeVisible();
     await page.locator('#agent-pair-code').fill(code); await page.locator('#agent-pair-form button').click();
     await expect(page.locator('#build')).toHaveAttribute('data-agent-ready', 'true');
     await page.locator('[data-close="settings-dialog"]').click(); await page.locator('[data-view="config"]').click(); await page.locator('#config-target').selectOption('esp32s3');

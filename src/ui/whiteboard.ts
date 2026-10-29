@@ -31,6 +31,34 @@ export function initWhiteboard(workspace: Blockly.WorkspaceSvg) {
   }
   const schedule=()=>{if(!queued){queued=true;requestAnimationFrame(draw)}};
   workspace.addChangeListener(schedule);new ResizeObserver(schedule).observe(host);
+  let zoomFrame = 0, targetZoom = workspace.scale, previousTime = 0;
+  let anchor = {x:0,y:0};
+  const cancelZoom=()=>{if(zoomFrame)cancelAnimationFrame(zoomFrame);zoomFrame=0;targetZoom=workspace.scale};
+  const zoomAt=(scale:number)=>{
+    const speed=workspace.options.zoomOptions.scaleSpeed;
+    workspace.zoom(anchor.x,anchor.y,Math.log(scale/workspace.scale)/Math.log(speed));schedule();
+  };
+  const animateZoom=(now:number)=>{
+    const dt=Math.min(40,Math.max(1,now-previousTime));previousTime=now;
+    const next=workspace.scale+(targetZoom-workspace.scale)*(1-Math.exp(-dt/55));
+    if(Math.abs(next-targetZoom)<0.0005){zoomAt(targetZoom);zoomFrame=0;return}
+    zoomAt(next);zoomFrame=requestAnimationFrame(animateZoom);
+  };
+  host.addEventListener('wheel',event=>{
+    // Flyout wheel remains scrolling; number/text editors keep their own handling.
+    if(host.inert||(event.target as Element).closest('.blocklyFlyout,input,textarea'))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    const bounds=workspace.getParentSvg().getBoundingClientRect();
+    anchor={x:event.clientX-bounds.left,y:event.clientY-bounds.top};
+    const unit=event.deltaMode===1?16:event.deltaMode===2?host.clientHeight:1;
+    const delta=Math.max(-240,Math.min(240,event.deltaY*unit));
+    if(!zoomFrame)targetZoom=workspace.scale;
+    targetZoom=Math.max(.4,Math.min(4,targetZoom*Math.exp(-delta*.0012)));
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){zoomAt(targetZoom);return}
+    if(!zoomFrame){previousTime=performance.now();zoomFrame=requestAnimationFrame(animateZoom)}
+  },{capture:true,passive:false});
+  document.addEventListener('pointerdown',cancelZoom,true);
+  window.addEventListener('blur',cancelZoom);
   // Viewport changes do not alter project blocks, fields or source ownership.
   let pan: {id:number;x:number;y:number;scrollX:number;scrollY:number}|null=null;
   host.addEventListener('pointerdown',event=>{

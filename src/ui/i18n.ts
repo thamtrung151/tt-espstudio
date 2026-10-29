@@ -5,6 +5,11 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Kết nối Compiler":"Connect Compiler",
+"Mở Agent và kết nối":"Open Agent & connect",
+"Đang mở Agent…":"Opening Agent…",
+"Bấm Kết nối Compiler và xác nhận trên cửa sổ Agent nếu được hỏi.":"Click Connect Compiler and approve in the Agent window if asked.",
+
   "Bấm Compiler để ghép nối. Bấm Chọn thiết bị rồi chọn board trong hộp của Chrome. Studio tự đối chiếu cổng nạp, tạm đóng Serial khi nạp và thử mở lại sau đó.":"Click Compiler to pair. Click Select device and choose your board in Chrome. Studio identifies its upload port, pauses Serial for upload and tries to reopen it afterward.",
   "Biên dịch thành công. Chọn thiết bị trên thanh công cụ; mở menu biên dịch để nạp bản vừa tạo.":"Build successful. Select a device in the toolbar; use the build menu to upload this build.",
   "Đã nạp firmware. Nhấn RST để chạy chương trình, rồi chọn lại thiết bị nếu COM thay đổi.":"Firmware uploaded. Press RST to run the program, then select the device again if COM changed.",

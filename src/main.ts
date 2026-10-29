@@ -28,29 +28,34 @@ let ide: ReturnType<typeof initIde> | undefined;
 let serialMonitor: SerialMonitor | undefined;
 let uploadPort: AgentPort | null = null;
 let mappingInvalid = false;
+let connectingCompiler = false;
 let phase: 'building' | 'confirmation' | 'uploading' | null = null;
 // Keep the selector aligned with the schema/build profiles for every chip family.
 $<HTMLSelectElement>('config-target').replaceChildren(...Object.entries(targets).map(([id, target]) => new Option(target.label, id)));
 const connectButton = document.createElement('button'); connectButton.id = 'agent-connect'; connectButton.textContent = 'Kết nối compiler'; connectButton.className = 'quiet';
 $('bridge-state').after(connectButton);
 const agentPanel = document.createElement('div'); agentPanel.className = 'card'; agentPanel.id = 'agent-panel'; agentPanel.hidden = !compiler.isAgent;
-agentPanel.innerHTML = `<h3>TT ESPStudio Agent · bản thử nghiệm</h3><p>Website giữ trình soạn thảo. Build và nạp chạy trên máy Windows của bạn qua Agent. Chưa có bộ cài người dùng cuối trong bản preview này.</p><p id="agent-help">Mở Agent trên máy, cho phép trình duyệt truy cập loopback nếu được hỏi, rồi kết nối. Mã ghép nối chỉ xuất hiện trên Agent.</p><button id="agent-pair-request">Yêu cầu ghép nối</button><form id="agent-pair-form" hidden><label>Mã 8 chữ số trên Agent<input id="agent-pair-code" inputmode="numeric" autocomplete="off" pattern="[0-9]{8}" maxlength="8" required></label><button type="submit">Xác nhận ghép nối</button></form><button id="agent-unpair" class="quiet">Ngắt ghép nối</button><p id="agent-message" role="status"></p>`;
+agentPanel.innerHTML = `<h3>TT ESPStudio Agent · bản thử nghiệm</h3><p>Website giữ trình soạn thảo. Build và nạp chạy trên máy Windows của bạn qua Agent. Chưa có bộ cài người dùng cuối trong bản preview này.</p><p id="agent-help">Mở Agent trên máy, cho phép trình duyệt truy cập loopback nếu được hỏi, rồi kết nối. Mã ghép nối chỉ xuất hiện trên Agent.</p><form id="agent-pair-form" hidden><label>Mã 8 chữ số trên Agent<input id="agent-pair-code" inputmode="numeric" autocomplete="off" pattern="[0-9]{8}" maxlength="8" required></label><button type="submit">Xác nhận ghép nối</button></form><button id="agent-unpair" class="quiet">Ngắt ghép nối</button><p id="agent-message" role="status"></p>`;
 $('device-view').prepend(agentPanel);
-$('agent-help').textContent = 'Mở Agent trên máy, bấm Yêu cầu ghép nối và làm theo hướng dẫn xác nhận. Cho phép trình duyệt kết nối tới Agent nếu được hỏi.';
+$('agent-help').textContent = 'Bấm Kết nối Compiler và xác nhận trên cửa sổ Agent nếu được hỏi.';
 agentPanel.querySelector('p')!.textContent = 'ESPStudio Agent giúp biên dịch và nạp chương trình từ website lên board của bạn. Cài Agent và mở ứng dụng trước khi kết nối.';
-const launchAgent = document.createElement('a'); launchAgent.href = 'ttespstudio://connect'; launchAgent.textContent = 'Mở Agent đã cài'; launchAgent.className = 'quiet';
-launchAgent.onclick = () => { $('agent-message').textContent = 'Đang mở Agent. Khi biểu tượng Agent xuất hiện ở khay hệ thống, bấm Yêu cầu ghép nối nếu phiên cũ đã hết.'; window.setTimeout(() => { if (!busy) void connectBridge(); }, 2000); };
+const launchAgent = document.createElement('a'); launchAgent.href = 'ttespstudio://connect'; launchAgent.textContent = 'Mở Agent và kết nối'; launchAgent.hidden = true; launchAgent.className = 'quiet';
+launchAgent.onclick = () => { launchAgent.hidden = true; $('agent-message').textContent = 'Đang mở Agent…'; window.setTimeout(() => void connectCompiler(), 1500); };
 launchAgent.title = 'Dành cho bộ cài có đăng ký liên kết TT ESPStudio. Bản Agent Dev vẫn mở bằng launcher .cmd.';
 $('agent-help').after(launchAgent);
 const cancelButton = document.createElement('button'); cancelButton.id = 'cancel-build'; cancelButton.textContent = 'Hủy biên dịch'; cancelButton.hidden = true;
 $('clear-log').before(cancelButton);
 let activeJob: string | null = null;
 let pairingRequest = '';
-connectButton.onclick = () => { ide?.showDialog('settings-dialog'); void connectBridge(); };
-$('agent-pair-request').onclick = async () => {
-  const button = $<HTMLButtonElement>('agent-pair-request');
-  button.disabled = true; $<HTMLButtonElement>('agent-unpair').disabled = true;
+connectButton.onclick = () => void connectCompiler();
+async function connectCompiler() {
+  if (connectingCompiler || busy) return;
+  connectingCompiler = true; launchAgent.hidden = true; syncButtons();
+  let reachable = false;
   try {
+    if (compiler.isAgent) { await compiler.request('health'); reachable = true; }
+    try { await compiler.connect(); await connectBridge(); return; }
+    catch (error) { if (!compiler.isAgent || compiler.token) throw error; }
     const request = await compiler.requestPairing(); pairingRequest = request.requestId;
     if (request.claimSecret) {
       $('agent-pair-form').hidden = true;
@@ -59,9 +64,12 @@ $('agent-pair-request').onclick = async () => {
     }
     $('agent-pair-form').hidden = false; $('agent-message').textContent = 'Kiểm tra đúng địa chỉ website trên cửa sổ Agent rồi nhập mã tại đây.';
     $<HTMLInputElement>('agent-pair-code').focus();
-  } catch (error) { $('agent-message').textContent = describeError(error); }
-  finally { button.disabled = false; $<HTMLButtonElement>('agent-unpair').disabled = false; }
-};
+  } catch (error) {
+    $('agent-message').textContent = describeError(error);
+    // Show the launch fallback only when the Agent cannot be reached, not after denial.
+    launchAgent.hidden = !compiler.isAgent || reachable;
+  } finally { connectingCompiler = false; syncButtons(); }
+}
 $('agent-pair-form').onsubmit = async event => {
   event.preventDefault();
   try { await compiler.pair(pairingRequest, $<HTMLInputElement>('agent-pair-code').value); $<HTMLInputElement>('agent-pair-code').value = ''; $('agent-pair-form').hidden = true; await connectBridge(); }
@@ -87,7 +95,7 @@ function paintCodeRange() {
 }
 codeArea.addEventListener('scroll', paintCodeRange);
 new ResizeObserver(paintCodeRange).observe(codeArea);
-const workspace = Blockly.inject('blockly', { toolbox, trashcan: true, grid: { spacing: 22, length: 1, colour: '#d7e1e2', snap: true }, zoom: { controls: false, wheel: true, startScale: 1.05, maxScale: 4, minScale: 0.4 }, move: { scrollbars: true, drag: true, wheel: false }, sounds: false });
+const workspace = Blockly.inject('blockly', { toolbox, trashcan: true, grid: { spacing: 22, length: 1, colour: '#d7e1e2', snap: true }, zoom: { controls: false, wheel: false, startScale: 1.05, maxScale: 4, minScale: 0.4 }, move: { scrollbars: true, drag: true, wheel: false }, sounds: false });
 let generated: Generated | null = null; let generationError = ''; let suppressEvents = true; let busy = false; let token = '';
 let lastBuild: { id: string; fingerprint: string } | null = null;
 let currentView = 'program';
@@ -114,6 +122,12 @@ function persist() {
 }
 function fingerprint() { return JSON.stringify({ config: project.config, code: project.code }); }
 function syncButtons() {
+  connectButton.hidden = !!token;
+  connectButton.disabled = connectingCompiler || busy;
+  connectButton.textContent = connectingCompiler ? 'Đang kết nối…' : 'Kết nối Compiler';
+  $('agent-unpair').hidden = !token;
+  $<HTMLButtonElement>('agent-unpair').disabled = connectingCompiler || busy;
+  if (token) { launchAgent.hidden = true; $('agent-pair-form').hidden = true; }
   const configMode = project.mode === 'code';
   $<HTMLButtonElement>('build').disabled = busy || !!generationError || configPending;
   $<HTMLButtonElement>('upload').disabled = busy || !token || !!generationError || configPending || !lastBuild || lastBuild.fingerprint !== fingerprint() || !uploadPort;

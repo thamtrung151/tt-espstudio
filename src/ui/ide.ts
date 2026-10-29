@@ -70,6 +70,8 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   ];
   let activeCategory=-1;
   const flyout = workspace.getFlyout();
+  // Blockly exposes this hook for a flyout independent of canvas zoom.
+  if (flyout instanceof Blockly.VerticalFlyout) flyout.getFlyoutScale = () => 1;
   function showGroup(index:number) {
     if ($('blockly').inert) return;
     if(activeCategory===index && flyout?.isVisible()){flyout.hide();activeCategory=-1}

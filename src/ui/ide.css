@@ -48,3 +48,24 @@ dialog{background:var(--panel);color:var(--text);border:1px solid var(--border);
 .canvas-tools.minimap-panel{display:block;width:162px;padding:4px;bottom:12px;left:12px}.minimap-panel canvas{display:block;width:152px;height:86px;cursor:crosshair;touch-action:none;border-radius:4px}.minimap-actions{display:flex;align-items:center;justify-content:space-between}.minimap-actions button{min-height:25px;min-width:28px;padding:3px}.minimap-actions output{font-size:10px}#blockly.panning,#blockly.panning *{cursor:grabbing!important}
 @media(max-width:800px){.canvas-tools.minimap-panel{width:116px;left:6px;bottom:6px}.minimap-panel canvas{width:106px;height:60px}}
 @media(min-width:801px){.ai-rail #ai-tutor{width:42px;height:42px;padding:7px}.ai-rail #ai-tutor svg{width:26px;height:26px}}
+/* Light theme uses the same semantic controls with readable foregrounds. */
+:root[data-theme=light]{--code:#fbfdff;--muted:#4e6472}
+:root[data-theme=light] .segmented{background:#dce7ec}
+:root[data-theme=light] button:hover:not(:disabled){background:#d6e7e7}
+:root[data-theme=light] .primary:hover:not(:disabled),:root[data-theme=light] .connected:hover:not(:disabled){background:#70e5bb}
+:root[data-theme=light] .brand small{color:#536d7b}
+:root[data-theme=light] .brand-mark{color:#147c56;background:#e4f9ee}
+:root[data-theme=light] .code-pane{color:var(--text)}
+:root[data-theme=light] .code-pane .pane-title,:root[data-theme=light] .code-pane .code-footer{background:var(--panel2);color:var(--text)}
+:root[data-theme=light] .code-pane .code-actions button{color:var(--text)}
+:root[data-theme=light] #code{caret-color:#172d3c}
+:root[data-theme=light] #code-render,:root[data-theme=light] .monitor pre,:root[data-theme=light] #config-json{color:#203947}
+:root[data-theme=light] .tok-comment{color:#397549}
+:root[data-theme=light] .tok-string{color:#9a4612}
+:root[data-theme=light] .tok-keyword{color:#6544a1}
+:root[data-theme=light] .tok-number{color:#075d92}
+:root[data-theme=light] .tok-call{color:#735a09}
+:root[data-theme=light] #code-badge,:root[data-theme=light] #agent-message,:root[data-theme=light] a{color:#096c50}
+:root[data-theme=light] .info{background:#e0f4e9;color:#175039;border-color:#95cdb0}
+:root[data-theme=light] .error{background:#fff0ea;color:#8c321d;border-color:#dcab99}
+:root[data-theme=light] .code-tab svg{color:#137b5c}
