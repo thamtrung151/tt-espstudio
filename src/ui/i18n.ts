@@ -5,6 +5,8 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Chọn giao diện":"Choose theme",
+"Nền trắng":"White",
 "Kết nối Compiler":"Connect Compiler",
 "Mở Agent và kết nối":"Open Agent & connect",
 "Đang mở Agent…":"Opening Agent…",

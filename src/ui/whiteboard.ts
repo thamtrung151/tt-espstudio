@@ -53,7 +53,7 @@ export function initWhiteboard(workspace: Blockly.WorkspaceSvg) {
     const unit=event.deltaMode===1?16:event.deltaMode===2?host.clientHeight:1;
     const delta=Math.max(-240,Math.min(240,event.deltaY*unit));
     if(!zoomFrame)targetZoom=workspace.scale;
-    targetZoom=Math.max(.4,Math.min(4,targetZoom*Math.exp(-delta*.0012)));
+    targetZoom=Math.max(.4,Math.min(4,targetZoom*Math.exp(-delta*.0014)));
     if(matchMedia('(prefers-reduced-motion: reduce)').matches){zoomAt(targetZoom);return}
     if(!zoomFrame){previousTime=performance.now();zoomFrame=requestAnimationFrame(animateZoom)}
   },{capture:true,passive:false});

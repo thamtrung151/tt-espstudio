@@ -4,11 +4,11 @@ import { icon } from './icons';
 import { t, onLocaleChange } from './i18n';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const prefKey = 'tt-espstudio.ui.v2';
-type Preferences = { ratio: number; collapsed: boolean; monitorHeight: number; theme: 'dark' | 'light' };
+type Preferences = { ratio: number; collapsed: boolean; monitorHeight: number; theme: 'dark' | 'light' | 'transparent' };
 function readPreferences(): Preferences {
   let value: Partial<Preferences> = {};
   try { value = JSON.parse(localStorage.getItem(prefKey) ?? '{}') ?? {}; } catch { /* Defaults; project remains separate. */ }
-  return { ratio: typeof value.ratio === 'number' ? Math.max(25,Math.min(85,value.ratio)) : 78, collapsed: value.collapsed === true, monitorHeight: typeof value.monitorHeight === 'number' ? Math.max(100,Math.min(300,value.monitorHeight)) : 154, theme: value.theme === 'light' ? 'light' : 'dark' };
+  return { ratio: typeof value.ratio === 'number' ? Math.max(25,Math.min(85,value.ratio)) : 78, collapsed: value.collapsed === true, monitorHeight: typeof value.monitorHeight === 'number' ? Math.max(100,Math.min(300,value.monitorHeight)) : 154, theme: value.theme === 'light' || value.theme === 'transparent' ? value.theme : 'dark' };
 }
 export function highlightCpp(code: string): string {
   const escape = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -29,6 +29,7 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
     document.documentElement.style.setProperty('--ratio',preferences.ratio+'%');
     document.documentElement.style.setProperty('--monitor',Math.min(preferences.monitorHeight,innerHeight*.4)+'px');
     document.documentElement.dataset.theme=preferences.theme;
+    document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.themeChoice===preferences.theme)));
     $('monitor').classList.toggle('collapsed',preferences.collapsed);
     $('monitor-toggle').setAttribute('aria-expanded',String(!preferences.collapsed));
     $('pane-divider').setAttribute('aria-valuenow',String(Math.round(preferences.ratio)));
@@ -46,7 +47,11 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   }
   $('serial-tab').onclick=()=>showMonitor('serial'); $('build-tab').onclick=()=>showMonitor('build');
   $('monitor-toggle').onclick=()=>{preferences.collapsed=!preferences.collapsed;apply()};
-  $('theme-toggle').onclick=()=>{preferences.theme=preferences.theme==='dark'?'light':'dark';apply()};
+  const closeThemes=()=>{$('theme-menu').hidden=true;$('theme-toggle').setAttribute('aria-expanded','false')};
+  $('theme-toggle').onclick=()=>{const open=$('theme-menu').hidden;$('theme-menu').hidden=!open;$('theme-toggle').setAttribute('aria-expanded',String(open))};
+  document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]').forEach(button=>button.onclick=()=>{preferences.theme=button.dataset.themeChoice as Preferences['theme'];apply();closeThemes();$('theme-toggle').focus()});
+  document.addEventListener('click',event=>{if(!(event.target as Element).closest('.theme-control'))closeThemes()});
+  $('theme-menu').onkeydown=event=>{if(event.key==='Escape'){closeThemes();$('theme-toggle').focus()}};
   function dragDivider(id: string, update:(event: PointerEvent)=>void) {
     const el=$(id); el.onpointerdown=e=>{if(e.button!==0)return;el.setPointerCapture(e.pointerId);document.body.classList.add('resizing');e.preventDefault()};
     el.onpointermove=e=>{if(el.hasPointerCapture(e.pointerId)){update(e);apply()}};

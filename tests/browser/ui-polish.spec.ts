@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 test('light theme has light controls and readable code/log text, persists across reload',async({page})=>{
   await page.goto('/');await expect(page.locator('#code')).toHaveValue(/digitalWrite/);
-  await page.locator('#theme-toggle').click();await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await page.locator('#theme-toggle').click();await page.locator('[data-theme-choice=light]').click();await expect(page.locator('html')).toHaveAttribute('data-theme','light');
   const colors=await page.evaluate(()=>{
     const rgb=(value:string)=>(value.match(/\d+/g)??[]).slice(0,3).map(Number);
     return {background:rgb(getComputedStyle(document.querySelector('.segmented')!).backgroundColor),code:rgb(getComputedStyle(document.getElementById('code-render')!).color),log:rgb(getComputedStyle(document.getElementById('serial-log')!).color)};
@@ -25,7 +25,7 @@ test('wheel animates through intermediate scales; flyout stays fixed and can cre
   for(let i=0;i<4;i++)await page.mouse.wheel(0,-200);
   await expect.poll(async()=>Number(await page.locator('#workspace-minimap').getAttribute('data-zoom'))).toBeGreaterThan(2.5);
   // Wait for animation to settle before measuring hit targets.
-  await expect.poll(async()=>Math.abs(Number(await page.locator('#workspace-minimap').getAttribute('data-zoom'))-1.05*Math.exp(.96))).toBeLessThan(.002);
+  await expect.poll(async()=>Math.abs(Number(await page.locator('#workspace-minimap').getAttribute('data-zoom'))-1.05*Math.exp(1.12))).toBeLessThan(.002);
   expect(new Set(await page.evaluate(()=>(window as any).__zoomSamples)).size).toBeGreaterThan(4);
   const zoomed=await block.boundingBox();expect(Math.abs(zoomed!.width-initial!.width)).toBeLessThan(1);
   await page.mouse.move(zoomed!.x+12,zoomed!.y+10);await page.mouse.down();
