@@ -5,6 +5,13 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Chưa kết nối Compiler":"Compiler not connected",
+"Cài TT ESPStudio Agent nếu đây là máy mới. Nếu đã cài, mở Agent rồi bấm Kết nối.":"Install TT ESPStudio Agent on a new computer. If already installed, open Agent and click Connect.",
+"Tải Agent cho Windows":"Download Agent for Windows",
+"Windows 10/11 · x64 · khoảng 36 MB. Lần biên dịch đầu cần Internet để tải công cụ cho chip.":"Windows 10/11 · x64 · about 36 MB. The first build needs Internet to download chip tools.",
+"Cài xong, bấm Kết nối và cho phép trình duyệt mở Agent. Nếu vẫn chưa kết nối được, kiểm tra quyền truy cập mạng cục bộ của website.":"After installation, click Connect and allow the browser to open Agent. If connection still fails, check this website’s local network access permission.",
+"Chi tiết bản phát hành":"Release details",
+"Cài Agent một lần trên Windows 10/11 x64. Mở Agent, bấm Compiler và xác nhận kết nối. Lần biên dịch đầu cần Internet.":"Install Agent once on Windows 10/11 x64. Open Agent, click Compiler and approve the connection. The first build needs Internet.",
 "Chưa mở lại được Serial trên COM vừa nạp. Bấm Chọn thiết bị nếu cổng mới chưa được Chrome cấp quyền.":"Could not reopen Serial on the upload COM port. Select the device if Chrome has not authorized its new USB interface.",
 "Chưa kiểm tra lại được COM vừa nạp. Kiểm tra Compiler rồi chọn lại thiết bị.":"Could not check the upload COM port. Check Compiler and select the device again.",
 "Nạp thành công. Đang kết nối lại Serial.":"Upload successful. Reconnecting Serial.",
