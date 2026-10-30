@@ -1,4 +1,3 @@
-import { uploadDiagnostic } from '../src/core/upload-diagnostic';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -92,4 +91,9 @@ export class BuildService {
   }
 }
 
-export { uploadDiagnostic } from '../src/core/upload-diagnostic';
+export function uploadDiagnostic(log: string): string | undefined {
+  if (!/Cannot configure port|device which does not exist|SerialException/i.test(log)) return;
+  if (/Hash of data verified\.[\s\S]*?(?:Leaving\.\.\.|Hard resetting)[\s\S]*?(?:Cannot configure port|device which does not exist|SerialException)/i.test(log))
+    return 'Toolchain đã báo xác minh dữ liệu trước khi mất cổng ở bước kết thúc/reset. Chưa xác nhận toàn bộ lượt nạp thành công. Kiểm tra chương trình trên board, nhấn RST rồi quét lại cổng. Với USB native, bật CDC trong Configuration; nếu lỗi reset lặp lại, chọn tự nhấn RST sau nạp.';
+  return 'Mất cổng USB/Serial; chưa xác nhận nạp hoàn tất. Với USB native, kiểm tra CDC trong Configuration, đưa board về BOOT + RST rồi quét/chọn đúng cổng trước khi thử lại. Writing 100% riêng lẻ chưa đủ để xác nhận thành công.';
+}

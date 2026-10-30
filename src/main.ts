@@ -2,10 +2,9 @@ import './ui/ide.css';
 import { shell } from './ui/shell';
 import { initIde } from './ui/ide';
 import { SerialMonitor } from './ui/serial';
-import { matchingPorts, portLabel, type AgentPort } from './ui/device-port';
+import { matchingPorts, portLabel, portUsbIdentity, type AgentPort } from './ui/device-port';
 import { t, initLocale } from './ui/i18n';
 import { compiler } from './compiler';
-import { uploadDiagnostic } from './core/upload-diagnostic';
 import { zipSync, strToU8 } from 'fflate';
 import { Blockly, initialWorkspace, toolbox, readProgram, setDevices, validateWorkspace, deviceBlocks } from './blocks';
 import { describeError, parseConfig, platformioIni, targets, template, type Config, type Driver, driverLabels, configWarnings, allocatePwm } from './core/config';
@@ -430,11 +429,21 @@ async function uploadFirmware() {
   if (!compiler.nativeUploadConsent && !confirm(t(`Nạp firmware vào ${port} (${targets[project.config.board.target].label})? Firmware hiện tại sẽ bị thay thế. Kiểm tra đúng board và dây nối trước khi tiếp tục.`))) return;
   if (compiler.nativeUploadConsent) notify('Kiểm tra board/cổng và xác nhận nạp trên cửa sổ TT ESPStudio Agent.');
   busy = true; phase = compiler.nativeUploadConsent ? 'confirmation' : 'uploading'; syncButtons();
-  try { await serialMonitor?.suspend(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); const message = result.status === 'success' ? (project.config.board.uploadReset === 'manual' ? 'Đã nạp firmware. Nhấn RST để chạy chương trình, rồi chọn lại thiết bị nếu COM thay đổi.' : 'Nạp thành công. Đang kết nối lại Serial.') : uploadDiagnostic(result.log ?? '') ?? result.diagnostic ?? 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.'; $('build-state').textContent = message; notify(message, result.status !== 'success'); }
+  try { await serialMonitor?.suspend(); const result = await watchJob(await api('upload', { buildId: lastBuild.id, port })); const message = result.status === 'success' ? (project.config.board.uploadReset === 'manual' ? 'Đã nạp firmware. Nhấn RST để chạy chương trình, rồi chọn lại thiết bị nếu COM thay đổi.' : 'Nạp thành công. Kiểm tra chương trình trên board; nếu USB đổi cổng, chọn lại thiết bị để dùng Serial.') : result.diagnostic ?? 'Nạp thất bại. Kiểm tra cổng, nút BOOT và log nạp.'; $('build-state').textContent = message; notify(message, result.status !== 'success'); }
   catch (error) { notify(describeError(error), true); }
   finally {
-    phase=null;await serialMonitor?.resume();busy=false;syncButtons();
-    if(serialMonitor?.info)void resolveDevice().catch(error=>notify(describeError(error),true));
+    phase=null;
+    let returnedPort:AgentPort|undefined;
+    const reopened=await serialMonitor?.resume(async()=>{
+      const ports=await api('ports') as AgentPort[];
+      const sameCom=ports.filter(candidate=>candidate.port===port);
+      if(sameCom.length!==1)return null;
+      const identity=portUsbIdentity(sameCom[0]);
+      if(!identity||matchingPorts(identity,ports).length!==1)return null;
+      returnedPort=sameCom[0];return identity;
+    });
+    if(reopened&&returnedPort){uploadPort=returnedPort;mappingInvalid=false;serialMonitor?.setLabel(portLabel(returnedPort));}
+    busy=false;syncButtons();
   }
 };
 $('upload').onclick = () => void uploadFirmware();

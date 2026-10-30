@@ -1,6 +1,11 @@
 export type UsbIdentity = { usbVendorId?: number; usbProductId?: number };
 export type AgentPort = { port: string; description?: string; hwid?: string };
 
+export function portUsbIdentity(port:AgentPort):UsbIdentity|null {
+  const id=port.hwid?.match(/VID:PID=([0-9a-f]{4}):([0-9a-f]{4})/i)??port.hwid?.match(/VID_([0-9a-f]{4})&PID_([0-9a-f]{4})/i);
+  return id?{usbVendorId:parseInt(id[1],16),usbProductId:parseInt(id[2],16)}:null;
+}
+
 export function matchingPorts(info: UsbIdentity, ports: AgentPort[]): AgentPort[] {
   if (!Number.isInteger(info.usbVendorId) || !Number.isInteger(info.usbProductId)) return [];
   return ports.filter(port => {

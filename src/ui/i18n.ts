@@ -5,6 +5,8 @@ const listeners=new Set<()=>void>();
 export const onLocaleChange=(callback:()=>void)=>{listeners.add(callback)};
 export const getLocale=()=>locale;
 const en:Record<string,string>={
+"Chưa mở lại được Serial trên COM vừa nạp. Bấm Chọn thiết bị nếu cổng mới chưa được Chrome cấp quyền.":"Could not reopen Serial on the upload COM port. Select the device if Chrome has not authorized its new USB interface.",
+"Chưa kiểm tra lại được COM vừa nạp. Kiểm tra Compiler rồi chọn lại thiết bị.":"Could not check the upload COM port. Check Compiler and select the device again.",
 "Nạp thành công. Đang kết nối lại Serial.":"Upload successful. Reconnecting Serial.",
 "Có nhiều cổng cùng loại đã được cấp quyền. Bấm Chọn thiết bị để xác định đúng board.":"Several authorized ports match this device type. Select the intended device.",
 "Chưa tìm lại được cổng Serial đã cấp quyền. Nếu board đang chạy, bấm Chọn thiết bị một lần để cấp quyền cho cổng USB mới.":"Could not recover the authorized Serial port. If the board is running, select the device once to grant access to its new USB port.",

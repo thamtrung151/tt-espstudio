@@ -26,7 +26,7 @@ export class SerialMonitor {
     $('serial-save').onclick=()=>{const url=URL.createObjectURL(new Blob([this.log],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='espstudio-serial.log';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
     $<HTMLFormElement>('serial-send-form').onsubmit=e=>{e.preventDefault();void this.send()};
     (navigator as any).serial?.addEventListener?.('disconnect',(event:Event)=>{
-      if(event.target===this.selected&&!this.suspended){if(this.locked)void this.disconnect().catch(()=>this.clearSelection());else void this.recover();}
+      if(event.target===this.selected&&!this.suspended)void this.disconnect().catch(()=>this.clearSelection());
     });
     onLocaleChange(()=>{this.status();if(!this.log)this.render()});this.status();
   }
@@ -70,56 +70,49 @@ export class SerialMonitor {
     this.reading=(async()=>{
       const decoder=new TextDecoder();
       try{while(true){const {value,done}=await reader.read();if(done)break;this.log=(this.log+decoder.decode(value,{stream:true})).slice(-40000);this.render()}}
-      catch(error){if(!this.disconnecting&&!this.suspended){this.log+='\n'+t('Mất kết nối Serial.')+' '+String(error);this.render()}}
-      finally{reader.releaseLock();this.reader=null;if(!this.disconnecting){try{await selected.close()}catch{/* Detached. */}this.port=null;if(!this.suspended){if(this.locked)this.clearSelection();else setTimeout(()=>void this.recover(),0)}}}
+      catch(error){if(!this.disconnecting&&!this.suspended){this.log+='\n'+t('Mất kết nối Serial.')+' '+String(error);this.render();this.notify('Mất kết nối Serial. Hãy kiểm tra USB và kết nối lại.',true)}}
+      finally{reader.releaseLock();this.reader=null;if(!this.disconnecting){try{await selected.close()}catch{/* Detached. */}this.port=null;if(!this.suspended)this.clearSelection()}}
     })();
   }
-  private async closePort(bestEffort=false){
+  private async closePort(){
     this.disconnecting=true;this.status();
     try{if(this.reader)await this.reader.cancel();if(this.reading)await this.reading;if(this.port)await this.port.close();this.port=null;this.reading=null}
-    catch(error){if(!bestEffort)throw error}
-    finally{this.port=null;this.reading=null;this.disconnecting=false;this.status()}
+    finally{this.disconnecting=false;this.status()}
   }
   async disconnect(){await this.closePort();this.clearSelection()}
   async suspend(){
     if(this.connecting)throw new Error(t('Chờ kết nối Serial hoàn tất trước khi nạp.'));
     this.suspended=true;await this.closePort();this.status();
   }
-  async resume(){
+  async resume(identityAtUploadPort?:()=>Promise<UsbIdentity|null>):Promise<boolean>{
     if(!this.suspended)return false;
-    return this.recover();
-  }
-  private async recover():Promise<boolean>{
-    if(this.connecting||!this.selected)return false;
-    this.connecting=true;this.suspended=true;this.status();
-    const original=this.selected, identity=original.getInfo();
-    const api=(navigator as Navigator & {serial?:{getPorts?():Promise<Port[]>}}).serial;
+    if(!this.selected){this.suspended=false;return false;}
+    const original=this.selected;
+    this.connecting=true;this.status();
     try{
-      await this.closePort(true);
       const deadline=Date.now()+12000;
       while(Date.now()<deadline){
-        // Never request new permission or substitute an arbitrary USB device.
-        const granted=api?.getPorts?await api.getPorts():[original];
-        const candidates=granted.filter(port=>{
-          if(port.connected===false)return false;
-          const info=port.getInfo();
-          return identity.usbVendorId!==undefined&&identity.usbProductId!==undefined
-            ? info.usbVendorId===identity.usbVendorId&&info.usbProductId===identity.usbProductId : port===original;
-        });
-        if(candidates.length>1)throw new Error('Có nhiều cổng cùng loại đã được cấp quyền. Bấm Chọn thiết bị để xác định đúng board.');
-        if(candidates.length===1){
+        const identity=identityAtUploadPort?await identityAtUploadPort():original.getInfo();
+        const serial=(navigator as Navigator & {serial?:{getPorts?():Promise<Port[]>}}).serial;
+        const granted=serial?.getPorts?await serial.getPorts():[original];
+        const matches=identity?granted.filter(port=>{
+          const info=port.getInfo();return port.connected!==false&&identity.usbVendorId!==undefined&&identity.usbProductId!==undefined&&info.usbVendorId===identity.usbVendorId&&info.usbProductId===identity.usbProductId;
+        }):[];
+        if(matches.length>1)break;
+        if(matches.length===1){
           try{
-            this.selected=candidates[0];await this.openPort(candidates[0]);
-            // CDC may disappear once more while Windows completes enumeration.
-            await new Promise(resolve=>setTimeout(resolve,350));
-            if(this.port){this.revision++;this.label='';this.changed();return true;}
-          }catch{/* Windows may still be replacing the old COM handle. */}
+            this.selected=matches[0];await this.openPort(matches[0]);
+            await new Promise(resolve=>setTimeout(resolve,300));
+            if(this.port)return true;
+          }catch{/* The same COM may still be re-enumerating after reset. */}
         }
         await new Promise(resolve=>setTimeout(resolve,500));
       }
-      throw new Error('Chưa tìm lại được cổng Serial đã cấp quyền. Nếu board đang chạy, bấm Chọn thiết bị một lần để cấp quyền cho cổng USB mới.');
-    }catch(error){this.clearSelection();this.notify(String((error as Error).message??error),true);return false}
-    finally{this.connecting=false;this.suspended=false;this.status()}
+      this.clearSelection();
+      this.notify('Chưa mở lại được Serial trên COM vừa nạp. Bấm Chọn thiết bị nếu cổng mới chưa được Chrome cấp quyền.',true);
+      return false;
+    }catch{this.clearSelection();this.notify('Chưa kiểm tra lại được COM vừa nạp. Kiểm tra Compiler rồi chọn lại thiết bị.',true);return false}
+    finally{this.suspended=false;this.connecting=false;this.status()}
   }
   private async send(){
     const writable=this.port?.writable;if(!writable)return;
