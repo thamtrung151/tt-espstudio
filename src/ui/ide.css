@@ -123,3 +123,9 @@ dialog{background:var(--panel);color:var(--text);border:1px solid var(--border);
 #compiler-install-title{display:block;padding-right:24px;font-size:15px}#compiler-install-close{position:absolute;right:7px;top:7px;padding:4px 9px;font-size:20px}#compiler-install-guide p{margin:10px 0}.compiler-install-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.compiler-install-actions a{display:inline-flex;align-items:center;justify-content:center;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-weight:600}.compiler-release-link{font-size:12px}.compiler-guide-visible #notice{visibility:hidden}
 :root[data-theme=transparent] #compiler-install-guide{backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);background:#edf4f0ed}
 @media(prefers-reduced-motion:no-preference){#compiler-install-guide:not([hidden]){animation:compiler-guide-in 180ms ease-out}@keyframes compiler-guide-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}}
+
+#account-dialog { width: min(420px, calc(100vw - 32px)); }
+#account-dialog p { overflow-wrap: anywhere; }
+#account-email { font-size: 0.9em; }
+#account-privacy, #account-storage { font-size: 0.85em; line-height: 1.55; }
+#account.signed-in { outline: 2px solid var(--accent); outline-offset: 2px; }

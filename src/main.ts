@@ -1,3 +1,4 @@
+import { initAccount } from './ui/account';
 import './ui/ide.css';
 import { shell } from './ui/shell';
 import { initIde } from './ui/ide';
@@ -122,6 +123,7 @@ let lastBuild: { id: string; fingerprint: string } | null = null;
 let currentView = 'program';
 let buildAction: 'build' | 'upload' = 'upload';
 ide = initIde(workspace, codeArea, notify);
+initAccount();
 $('settings').onclick=()=>{if(token)$('agent-unpair').click();else void connectCompiler()};
 let configPending = false;
 const draftStatus = document.createElement('div'); draftStatus.className = 'info'; draftStatus.hidden = true;

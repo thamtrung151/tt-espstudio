@@ -1,6 +1,6 @@
 {
   "name": "tt-espstudio",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,6 +19,7 @@
   "dependencies": {
     "blockly": "^12.3.1",
     "fflate": "^0.8.2",
+    "firebase": "13.1.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -28,5 +29,8 @@
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "5.0.5"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7"
   }
 }

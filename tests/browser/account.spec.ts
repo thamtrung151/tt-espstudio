@@ -1,0 +1,21 @@
+import { test, expect } from '@playwright/test';
+test('account setup is optional and does not alter the local project', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await page.locator('#locale-vi').click();
+  await expect(page.locator('.blocklySvg').first()).toBeVisible();
+  const before = await page.evaluate(() => localStorage.getItem('tt-espstudio.project.v1'));
+  await page.locator('#account').click();
+  await expect(page.locator('#account-dialog')).toBeVisible();
+  await expect(page.locator('#account-status')).toContainText('chế độ khách');
+  await expect(page.locator('#account-action')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#account-dialog')).not.toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('tt-espstudio.project.v1'))).toBe(before);
+  await page.locator('#locale-en').click();
+  await page.locator('#account').click();
+  await expect(page.locator('#account-status')).toContainText('guest');
+  await expect(page.locator('#account-action')).toHaveText('Sign in with Google');
+  expect(errors).toEqual([]);
+});

@@ -22,6 +22,7 @@ jobs:
       - run: npm test
       - run: npm run build:web
         env:
+          VITE_FIREBASE_CONFIG: ${{ vars.ESPSTUDIO_FIREBASE_CONFIG }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@v3
         with:

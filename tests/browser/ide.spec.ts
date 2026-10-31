@@ -40,7 +40,7 @@ test('real palette search creates usable flyout blocks; placeholders are explici
   await expect(page.locator('.blocklyFlyout:visible .blocklyDraggable').first()).toBeVisible();
   await page.locator('#block-search').fill('no-such-block');await expect(page.locator('#search-empty')).toBeVisible();
   await page.locator('#ai-tutor').click();await expect(page.locator('#info-text')).toContainText('phiên bản sau');await page.locator('[data-close=info-dialog]').click();
-  await page.locator('#account').click();await expect(page.locator('#info-text')).toContainText('Chưa đăng nhập');
+  await page.locator('#account').click();await expect(page.locator('#account-status')).toContainText('chế độ khách');
 });
 
 async function mockedCompiler(page:Page, result:'success'|'error'='success', pending=false){

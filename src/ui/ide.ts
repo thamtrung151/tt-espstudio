@@ -111,7 +111,6 @@ export function initIde(workspace: Blockly.WorkspaceSvg, code: HTMLTextAreaEleme
   $('project-menu').onclick=()=>showDialog('project-dialog');$('new-project').onclick=()=>showDialog('project-dialog');
   $('help').onclick=()=>showDialog('help-dialog');
   document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button=>button.onclick=()=>$<HTMLDialogElement>(button.dataset.close!).close());
-  $('account').onclick=()=>{$('info-title').textContent=t('Tài khoản');$('info-text').textContent=t('Chưa đăng nhập. Tính năng tài khoản sẽ có trong phiên bản sau.');showDialog('info-dialog')};
   $('ai-tutor').onclick=()=>{$('info-title').textContent='AI Tutor';$('info-text').textContent=t('AI Tutor sẽ có trong phiên bản sau.');showDialog('info-dialog')};
   $('notice').onclick=()=>{$('notice').hidden=true};
   $('copy-code').onclick=async()=>{try{await navigator.clipboard.writeText(code.value);notify('Đã sao chép C++.')}catch{notify('Không sao chép được. Hãy chọn và sao chép văn bản trong vùng code.',true)}};
