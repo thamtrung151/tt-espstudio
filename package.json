@@ -17,7 +17,7 @@
     "test:agent-browser": "playwright test --config playwright.agent.config.ts"
   },
   "dependencies": {
-    "blockly": "^12.3.1",
+    "blockly": "^13.4.0",
     "fflate": "^0.8.2",
     "firebase": "13.1.0",
     "zod": "4.6.7"
