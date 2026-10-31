@@ -24,7 +24,7 @@ jobs:
         env:
           VITE_FIREBASE_CONFIG: ${{ vars.ESPSTUDIO_FIREBASE_CONFIG }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist-web
   deploy:
